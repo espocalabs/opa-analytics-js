@@ -1,0 +1,141 @@
+# Opa Analytics SDK
+
+First-party, cookieless-friendly browser analytics for [Opa](https://opa.sh) —
+click attribution, `identify` / `track` for conversions, and automatic outbound
+link decoration. Ships as three small packages so you install only what your
+stack needs.
+
+| Package | What it is |
+| --- | --- |
+| [`@opa.sh/analytics`](packages/analytics) | Framework-agnostic browser core: `createTracker`, cookie/localStorage persistence, `sendBeacon`/`fetch` transport, outbound link decoration. |
+| [`@opa.sh/analytics-react`](packages/analytics-react) | React bindings: `<OpaProvider>`, `useOpa()`, `<OpaAnalytics>`. |
+| [`@opa.sh/analytics-next`](packages/analytics-next) | Next.js (App Router) client bindings — re-exports the React API. |
+
+Full docs: **https://opa.sh/docs/sdks/conversions**
+
+## Script tag (no build step)
+
+Drop one tag on any page. On load it reads config from `data-*` attributes,
+captures the click id from the URL / first-party cookie, and exposes
+`window.opa`:
+
+```html
+<script
+  src="https://opa.sh/sdk.js"
+  data-key="opa_pub_xxx"
+  data-domains='["example.com"]'
+  data-attribution-model="last-click"
+  async
+></script>
+
+<script>
+  // Queue calls before the script finishes loading, or call window.opa.* after.
+  window.opa.identify({ externalId: "user_123", email: "a@b.com" });
+  window.opa.track("signup");
+</script>
+```
+
+## `@opa.sh/analytics` (core)
+
+```bash
+npm i @opa.sh/analytics
+```
+
+```ts
+import { createTracker } from "@opa.sh/analytics";
+
+const opa = createTracker({
+  key: "opa_pub_xxx",
+  outboundDomains: ["example.com"],
+});
+
+await opa.identify({ externalId: "user_123", email: "a@b.com" });
+await opa.track("purchase", { plan: "pro", amount: 4900 });
+```
+
+The tracker posts to `POST /v1/track/collect` on `https://api.opa.sh`, sending
+your public site key via the `x-opa-site-key` header (or in the JSON body when
+falling back to `navigator.sendBeacon`). Every method is SSR-safe and never
+throws to the caller.
+
+## `@opa.sh/analytics-react`
+
+```bash
+npm i @opa.sh/analytics @opa.sh/analytics-react
+```
+
+```tsx
+import { OpaProvider, useOpa } from "@opa.sh/analytics-react";
+
+function App() {
+  return (
+    <OpaProvider config={{ key: "opa_pub_xxx" }}>
+      <Checkout />
+    </OpaProvider>
+  );
+}
+
+function Checkout() {
+  const opa = useOpa();
+  return <button onClick={() => opa.track("purchase")}>Buy</button>;
+}
+```
+
+`<OpaAnalytics config={...} />` is a zero-render component that boots a single
+tracker for the page if you do not need the `useOpa()` context.
+
+## `@opa.sh/analytics-next`
+
+```bash
+npm i @opa.sh/analytics @opa.sh/analytics-react @opa.sh/analytics-next
+```
+
+```tsx
+// app/layout.tsx
+import { OpaProvider } from "@opa.sh/analytics-next";
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <OpaProvider config={{ key: "opa_pub_xxx" }}>{children}</OpaProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+The Next package is browser-only — it re-exports the client components from
+`@opa.sh/analytics-react` with the `"use client"` boundary already applied.
+
+## Development
+
+This is a [Bun](https://bun.sh) workspace.
+
+```bash
+bun install
+bun run -F '*' build       # tsup → dist/ (ESM + CJS + .d.ts) for all packages
+bun run -F '*' typecheck   # tsc --noEmit
+bun run -F '*' test        # bun test
+```
+
+To regenerate the CDN bundle served at `/sdk.js`:
+
+```bash
+bun run --cwd packages/analytics build:sdk
+```
+
+## Releasing
+
+Publishing is automated by [`.github/workflows/release.yml`](.github/workflows/release.yml),
+which runs **only** when a `v*` tag is pushed. It builds every package and runs
+`npm publish --provenance` in dependency order using the `NPM_TOKEN` secret.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+## License
+
+[MIT](LICENSE) © Espoca

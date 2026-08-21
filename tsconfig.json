@@ -1,0 +1,21 @@
+{
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"display": "Opa Analytics base",
+	"compilerOptions": {
+		"target": "ES2020",
+		"lib": ["dom", "dom.iterable", "esnext"],
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"moduleDetection": "force",
+		"jsx": "react-jsx",
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"skipLibCheck": true,
+		"strict": true,
+		"noEmit": true,
+		"ignoreDeprecations": "6.0",
+		"allowJs": true,
+		"baseUrl": "."
+	}
+}

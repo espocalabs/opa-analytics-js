@@ -1,0 +1,66 @@
+{
+	"name": "@opa.sh/analytics-next",
+	"version": "0.1.0",
+	"description": "Next.js bindings for Opa analytics — client re-exports of the React provider, hook, and component.",
+	"license": "MIT",
+	"keywords": [
+		"opa",
+		"analytics",
+		"next",
+		"nextjs",
+		"attribution",
+		"conversion-tracking"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/espocalabs/opa-analytics-js.git",
+		"directory": "packages/analytics-next"
+	},
+	"homepage": "https://opa.sh/docs/sdks/conversions",
+	"type": "module",
+	"sideEffects": false,
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "tsup src/index.ts --format esm,cjs --dts --clean --external react --external next --external @opa.sh/analytics --external @opa.sh/analytics-react",
+		"typecheck": "tsc --noEmit",
+		"test": "bun test",
+		"lint": "biome check ."
+	},
+	"peerDependencies": {
+		"next": "^16",
+		"react": "^18 || ^19"
+	},
+	"dependencies": {
+		"@opa.sh/analytics": "workspace:*",
+		"@opa.sh/analytics-react": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.3.14",
+		"@types/node": "^25.9.1",
+		"@types/react": "^19.2.15",
+		"next": "^16.3.1",
+		"react": "^19.2.6",
+		"tsup": "^8.5.0",
+		"typescript": "^6.0.3"
+	}
+}

@@ -1,0 +1,24 @@
+{
+	"name": "opa-analytics-js",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Opa browser analytics SDK — monorepo for @opa.sh/analytics and framework bindings.",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/espocalabs/opa-analytics-js.git"
+	},
+	"homepage": "https://opa.sh/docs/sdks/conversions",
+	"workspaces": [
+		"packages/*"
+	],
+	"scripts": {
+		"build": "bun run -F '*' build",
+		"typecheck": "bun run -F '*' typecheck",
+		"test": "bun run -F '*' test",
+		"lint": "biome check ."
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.9"
+	}
+}

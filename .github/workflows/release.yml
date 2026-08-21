@@ -1,0 +1,57 @@
+name: Release
+
+# Publishes the packages to npm ONLY when a v* tag is pushed.
+# The owner cuts a release with, e.g.:  git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node (npm registry + provenance auth)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build all packages
+        run: bun run -F '*' build
+
+      # Publish in dependency order: the core first, then the packages that
+      # depend on it. Bun rewrites the `workspace:*` deps to the real version
+      # on publish. --provenance requires the id-token permission above.
+      - name: Publish @opa.sh/analytics
+        run: npm publish --access public --provenance
+        working-directory: packages/analytics
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @opa.sh/analytics-react
+        run: npm publish --access public --provenance
+        working-directory: packages/analytics-react
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @opa.sh/analytics-next
+        run: npm publish --access public --provenance
+        working-directory: packages/analytics-next
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
