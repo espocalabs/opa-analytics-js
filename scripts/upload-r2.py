@@ -123,8 +123,19 @@ def main() -> None:
     try:
         response = urllib.request.urlopen(request, timeout=30)
     except urllib.error.HTTPError as error:
-        detail = error.read().decode(errors="replace")[:800]
-        sys.exit(f"[upload-r2] HTTP {error.code}\n{detail}")
+        detail = error.read().decode(errors="replace")[:1200]
+        # Debug (no secret leaked): our own StringToSign + shapes, so we can
+        # diff against R2's echoed StringToSign in `detail`. If they match,
+        # canonicalization is identical and only the HMAC secret differs.
+        print(f"[upload-r2] HTTP {error.code}", file=sys.stderr)
+        print(f"[debug] secret_len={len(secret_key)} "
+              f"access_key_len={len(access_key)} host={host} "
+              f"canonical_uri={canonical_uri} body_len={len(body)}",
+              file=sys.stderr)
+        print("[debug] OUR StringToSign >>>", file=sys.stderr)
+        print(string_to_sign, file=sys.stderr)
+        print("[debug] <<< end OUR StringToSign", file=sys.stderr)
+        sys.exit(f"[upload-r2] response body:\n{detail}")
     except Exception as error:  # noqa: BLE001 - surface anything else clearly
         sys.exit(f"[upload-r2] {type(error).__name__}: {error}")
 
