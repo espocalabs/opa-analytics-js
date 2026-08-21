@@ -55,3 +55,38 @@ jobs:
         working-directory: packages/analytics-next
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # ---------------------------------------------------------------------
+      # Browser CDN bundle: build the raw minified IIFE and upload it to the
+      # Opa CDN (Cloudflare R2). Customers load it as a single <script> tag
+      # from ${R2_PUBLIC_URL}/sdk.js. Runs only after npm publish succeeds.
+      # ---------------------------------------------------------------------
+      - name: Build browser SDK (sdk.js)
+        run: bun run --cwd packages/analytics build:sdk
+
+      - name: Upload SDK to Cloudflare R2
+        # aws CLI is preinstalled on ubuntu-latest. We talk to R2 over its
+        # S3-compatible API. `s3api put-object` (rather than `s3 cp`) is the
+        # most portable form here: a single, explicit PUT with the headers we
+        # want and no multipart/streaming machinery.
+        #
+        # R2 compatibility: recent AWS CLI v2 defaults to attaching CRC32
+        # request checksums with aws-chunked streaming trailers, which R2 has
+        # historically rejected. Setting AWS_REQUEST_CHECKSUM_CALCULATION to
+        # `when_required` disables that for operations (like PutObject) that
+        # don't mandate a checksum, which is the most compatible choice. Region
+        # for R2 is always `auto`.
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+        run: |
+          aws s3api put-object \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
+            --bucket "${{ secrets.R2_BUCKET }}" \
+            --key "sdk.js" \
+            --body packages/analytics/dist/sdk.js \
+            --content-type "application/javascript; charset=utf-8" \
+            --cache-control "public, max-age=3600"
+          echo "Uploaded sdk.js to R2. Public URL: <R2_PUBLIC_URL>/sdk.js"

@@ -4,11 +4,15 @@ import { build } from "esbuild";
 /**
  * Builds the browser CDN bundle (`/sdk.js`) from `src/browser.ts`.
  *
- * The bundle is emitted as a plain minified IIFE string wrapped in an
- * in-module constant, so the host serving `GET /sdk.js` (a Cloudflare Worker
- * in production) can return it verbatim without running esbuild at request
- * time. `build-sdk.test.ts` fails CI if that committed constant drifts from a
- * fresh build of this entry.
+ * The bundle is emitted two ways:
+ *   1. As a plain minified IIFE string wrapped in an in-module constant
+ *      (`scripts/bundle.generated.ts`), so a host serving `GET /sdk.js`
+ *      (a Cloudflare Worker in production) can return it verbatim without
+ *      running esbuild at request time. `build-sdk.test.ts` fails CI if that
+ *      committed constant drifts from a fresh build of this entry.
+ *   2. As the raw, browser-loadable file `dist/sdk.js` — the exact JavaScript
+ *      a `<script src=".../sdk.js">` fetches. The release workflow uploads
+ *      this file to the Opa CDN (Cloudflare R2) on every `v*` tag.
  *
  * Run: `bun run --cwd packages/analytics build:sdk`
  */
@@ -18,6 +22,11 @@ const ENTRY = fileURLToPath(new URL("../src/browser.ts", import.meta.url));
 /** The committed artifact (`scripts/bundle.generated.ts`). */
 export const OUTPUT_FILE = fileURLToPath(
 	new URL("./bundle.generated.ts", import.meta.url),
+);
+
+/** The raw browser-loadable IIFE file (`dist/sdk.js`), uploaded to the CDN. */
+export const SDK_JS_FILE = fileURLToPath(
+	new URL("../dist/sdk.js", import.meta.url),
 );
 
 /** esbuild the browser entry into a single minified IIFE string. */
@@ -56,10 +65,14 @@ export const SDK_BUNDLE = ${JSON.stringify(bundle)};
 async function main(): Promise<void> {
 	const bundle = await buildSdkBundle();
 	const module = renderGeneratedModule(bundle);
+	// 1. The committed TS constant (consumed by the Worker + drift test).
 	await Bun.write(OUTPUT_FILE, module);
+	// 2. The raw browser file the CDN serves verbatim as GET /sdk.js.
+	await Bun.write(SDK_JS_FILE, bundle);
 	console.log(
 		`[build-sdk] wrote ${(bundle.length / 1024).toFixed(2)} kB IIFE → ${OUTPUT_FILE}`,
 	);
+	console.log(`[build-sdk] wrote raw sdk.js → ${SDK_JS_FILE}`);
 }
 
 if (import.meta.main) {
