@@ -1,6 +1,6 @@
 {
 	"name": "@opa.sh/analytics-react",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "React bindings for Opa analytics — <OpaProvider>, useOpa(), and <OpaAnalytics>.",
 	"license": "MIT",
 	"keywords": [
@@ -23,6 +23,7 @@
 	"types": "./dist/index.d.ts",
 	"exports": {
 		".": {
+			"bun": "./src/index.ts",
 			"import": {
 				"types": "./dist/index.d.ts",
 				"default": "./dist/index.js"
@@ -34,7 +35,8 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"src"
 	],
 	"publishConfig": {
 		"access": "public"

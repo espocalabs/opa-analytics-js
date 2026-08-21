@@ -1,6 +1,6 @@
 {
 	"name": "@opa.sh/analytics",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Opa browser analytics SDK — first-party click attribution, identify/track, outbound link decoration.",
 	"license": "MIT",
 	"keywords": [
@@ -24,6 +24,7 @@
 	"types": "./dist/index.d.ts",
 	"exports": {
 		".": {
+			"bun": "./src/index.ts",
 			"import": {
 				"types": "./dist/index.d.ts",
 				"default": "./dist/index.js"
@@ -35,7 +36,8 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"src"
 	],
 	"publishConfig": {
 		"access": "public"

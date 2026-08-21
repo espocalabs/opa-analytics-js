@@ -1,6 +1,6 @@
 {
 	"name": "@opa.sh/analytics-next",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Next.js bindings for Opa analytics — client re-exports of the React provider, hook, and component.",
 	"license": "MIT",
 	"keywords": [
@@ -24,6 +24,7 @@
 	"types": "./dist/index.d.ts",
 	"exports": {
 		".": {
+			"bun": "./src/index.ts",
 			"import": {
 				"types": "./dist/index.d.ts",
 				"default": "./dist/index.js"
@@ -35,7 +36,8 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"src"
 	],
 	"publishConfig": {
 		"access": "public"
