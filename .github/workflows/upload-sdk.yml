@@ -1,0 +1,40 @@
+name: Upload SDK to R2
+
+# Builds the browser IIFE and uploads it to the Opa CDN (Cloudflare R2)
+# WITHOUT publishing to npm. Use this to (re)push sdk.js on demand — e.g. to
+# recover a failed release upload — without cutting a new version tag.
+#
+# Run it from the Actions tab ("Run workflow") or:  gh workflow run upload-sdk.yml
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build browser SDK (sdk.js)
+        run: bun run --cwd packages/analytics build:sdk
+
+      - name: Upload SDK to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_KEY: sdk.js
+          R2_BODY: packages/analytics/dist/sdk.js
+        run: python3 scripts/upload-r2.py
