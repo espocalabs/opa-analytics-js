@@ -1,6 +1,6 @@
 {
 	"name": "@opa.sh/analytics-react",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "React bindings for Opa analytics — <OpaProvider>, useOpa(), and <OpaAnalytics>.",
 	"license": "MIT",
 	"keywords": [
