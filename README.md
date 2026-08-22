@@ -21,7 +21,7 @@ captures the click id from the URL / first-party cookie, and exposes
 
 ```html
 <script
-  src="https://opa.sh/sdk.js"
+  src="https://cdn.opa.sh/sdk.js"
   data-key="opa_pub_xxx"
   data-domains='["example.com"]'
   data-attribution-model="last-click"
@@ -34,6 +34,54 @@ captures the click id from the URL / first-party cookie, and exposes
   window.opa.track("signup");
 </script>
 ```
+
+### TypeScript
+
+The CDN bundle is plain JavaScript — it attaches `window.opa` at runtime and
+ships no type declarations, so TypeScript doesn't know the global exists. Add a
+declaration file anywhere your `tsconfig.json` picks up (any `.d.ts` under an
+`include`d path — e.g. `src/types/opa.d.ts`):
+
+```ts
+// src/types/opa.d.ts
+export {}; // make this file a module so `declare global` augments, not replaces
+
+type OpaIdentifyInput = {
+  externalId: string;
+  email?: string;
+  name?: string;
+  avatar?: string;
+  [key: string]: unknown;
+};
+
+type OpaGlobal = {
+  identify: (input: OpaIdentifyInput) => Promise<void>;
+  track: (eventName: string, properties?: Record<string, unknown>) => Promise<void>;
+  getClickId: () => string | null;
+  setConsent: (granted: boolean) => void;
+  reset: () => void;
+};
+
+declare global {
+  interface Window {
+    // Present once cdn.opa.sh/sdk.js has loaded. It's optional because the
+    // script is async — guard with `window.opa?.track(...)`, or use the
+    // pre-load queue: `(window.opa ||= []).push(["track", "signup"])`.
+    opa?: OpaGlobal;
+  }
+}
+```
+
+Then it type-checks with no import and no npm install:
+
+```ts
+window.opa?.identify({ externalId: "user_123", email: "a@b.com" });
+window.opa?.track("signup", { plan: "pro" });
+```
+
+> Prefer real imports? Install the npm packages instead (`@opa.sh/analytics`
+> and friends below) — they bundle their own `.d.ts` and need no global
+> augmentation.
 
 ## `@opa.sh/analytics` (core)
 
