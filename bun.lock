@@ -10,42 +10,7 @@
     },
     "packages/analytics": {
       "name": "@opa.sh/analytics",
-      "version": "0.1.0",
-      "devDependencies": {
-        "@types/bun": "^1.3.14",
-        "@types/node": "^25.9.1",
-        "esbuild": "^0.28.1",
-        "tsup": "^8.5.0",
-        "typescript": "^6.0.3",
-      },
-    },
-    "packages/analytics-next": {
-      "name": "@opa.sh/analytics-next",
-      "version": "0.1.0",
-      "dependencies": {
-        "@opa.sh/analytics": "workspace:*",
-        "@opa.sh/analytics-react": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/bun": "^1.3.14",
-        "@types/node": "^25.9.1",
-        "@types/react": "^19.2.15",
-        "next": "^16.3.1",
-        "react": "^19.2.6",
-        "tsup": "^8.5.0",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "next": "^16",
-        "react": "^18 || ^19",
-      },
-    },
-    "packages/analytics-react": {
-      "name": "@opa.sh/analytics-react",
-      "version": "0.1.0",
-      "dependencies": {
-        "@opa.sh/analytics": "workspace:*",
-      },
+      "version": "0.2.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.1",
         "@testing-library/react": "^16.3.2",
@@ -53,15 +18,22 @@
         "@types/node": "^25.9.1",
         "@types/react": "^19.2.15",
         "@types/react-dom": "^19.2.3",
+        "esbuild": "^0.28.1",
         "happy-dom": "^20.11.1",
+        "next": "^16.3.1",
         "react": "^19.2.6",
         "react-dom": "^19.2.6",
         "tsup": "^8.5.0",
         "typescript": "^6.0.3",
       },
       "peerDependencies": {
+        "next": "^16",
         "react": "^18 || ^19",
       },
+      "optionalPeers": [
+        "next",
+        "react",
+      ],
     },
   },
   "packages": {
@@ -228,10 +200,6 @@
     "@next/swc-win32-x64-msvc": ["@next/swc-win32-x64-msvc@16.3.2", "", { "os": "win32", "cpu": "x64" }, "sha512-H4Y2o2/JcHu8LtwzD5CXfHhwxwz8gfsx2HXDEw46Mtev5xHnEmB7HNtZtmriw5ReUOjRtcDqo7XSbU01FT9NlA=="],
 
     "@opa.sh/analytics": ["@opa.sh/analytics@workspace:packages/analytics"],
-
-    "@opa.sh/analytics-next": ["@opa.sh/analytics-next@workspace:packages/analytics-next"],
-
-    "@opa.sh/analytics-react": ["@opa.sh/analytics-react@workspace:packages/analytics-react"],
 
     "@rollup/rollup-android-arm-eabi": ["@rollup/rollup-android-arm-eabi@4.62.5", "", { "os": "android", "cpu": "arm" }, "sha512-jfkGfTwhQpsiSckPF8r9bU3pn3vyd72NlWaO+TgEO6WPSDnUhXzrNYCHBMOYj0ACaUgjm6eERLF+XV9a6RstoA=="],
 

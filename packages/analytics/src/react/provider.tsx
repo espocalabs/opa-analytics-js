@@ -1,11 +1,11 @@
 "use client";
 
+import { createContext, type ReactNode, useContext, useRef } from "react";
 import {
 	createTracker as defaultCreateTracker,
 	type Tracker,
 	type TrackerConfig,
-} from "@opa.sh/analytics";
-import { createContext, type ReactNode, useContext, useRef } from "react";
+} from "../index";
 
 export type OpaClient = {
 	identify: Tracker["identify"];

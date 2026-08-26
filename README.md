@@ -2,14 +2,18 @@
 
 First-party, cookieless-friendly browser analytics for [Opa](https://opa.sh) —
 click attribution, `identify` / `track` for conversions, and automatic outbound
-link decoration. Ships as three small packages so you install only what your
-stack needs.
+link decoration. Ships as **one package** — `@opa.sh/analytics` — with the
+framework bindings split across import subpaths, so you `npm i` once and import
+only the entry your stack needs.
 
-| Package | What it is |
+| Import | What it is |
 | --- | --- |
-| [`@opa.sh/analytics`](packages/analytics) | Framework-agnostic browser core: `createTracker`, cookie/localStorage persistence, `sendBeacon`/`fetch` transport, outbound link decoration. |
-| [`@opa.sh/analytics-react`](packages/analytics-react) | React bindings: `<OpaProvider>`, `useOpa()`, `<OpaAnalytics>`. |
-| [`@opa.sh/analytics-next`](packages/analytics-next) | Next.js (App Router) client bindings — re-exports the React API. |
+| [`@opa.sh/analytics`](packages/analytics/src/index.ts) | Framework-agnostic browser core: `createTracker`, cookie/localStorage persistence, `sendBeacon`/`fetch` transport, outbound link decoration. |
+| [`@opa.sh/analytics/react`](packages/analytics/src/react) | React bindings: `<OpaProvider>`, `useOpa()`, `<OpaAnalytics>`. |
+| [`@opa.sh/analytics/next`](packages/analytics/src/next) | Next.js (App Router) client bindings — re-exports the React API with `"use client"`. |
+
+`react` and `next` are **optional peer dependencies**: the vanilla core pulls in
+neither, and you only need them installed to use the matching subpath.
 
 Full docs: **https://opa.sh/docs/sdks/conversions**
 
@@ -79,9 +83,9 @@ window.opa?.identify({ externalId: "user_123", email: "a@b.com" });
 window.opa?.track("signup", { plan: "pro" });
 ```
 
-> Prefer real imports? Install the npm packages instead (`@opa.sh/analytics`
-> and friends below) — they bundle their own `.d.ts` and need no global
-> augmentation.
+> Prefer real imports? Install the npm package instead (`@opa.sh/analytics`,
+> with the `/react` and `/next` subpaths below) — it bundles its own `.d.ts`
+> and needs no global augmentation.
 
 ## `@opa.sh/analytics` (core)
 
@@ -106,14 +110,14 @@ your public site key via the `x-opa-site-key` header (or in the JSON body when
 falling back to `navigator.sendBeacon`). Every method is SSR-safe and never
 throws to the caller.
 
-## `@opa.sh/analytics-react`
+## `@opa.sh/analytics/react`
 
 ```bash
-npm i @opa.sh/analytics @opa.sh/analytics-react
+npm i @opa.sh/analytics react
 ```
 
 ```tsx
-import { OpaProvider, useOpa } from "@opa.sh/analytics-react";
+import { OpaProvider, useOpa } from "@opa.sh/analytics/react";
 
 function App() {
   return (
@@ -132,15 +136,15 @@ function Checkout() {
 `<OpaAnalytics config={...} />` is a zero-render component that boots a single
 tracker for the page if you do not need the `useOpa()` context.
 
-## `@opa.sh/analytics-next`
+## `@opa.sh/analytics/next`
 
 ```bash
-npm i @opa.sh/analytics @opa.sh/analytics-react @opa.sh/analytics-next
+npm i @opa.sh/analytics react next
 ```
 
 ```tsx
 // app/layout.tsx
-import { OpaProvider } from "@opa.sh/analytics-next";
+import { OpaProvider } from "@opa.sh/analytics/next";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -153,8 +157,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
-The Next package is browser-only — it re-exports the client components from
-`@opa.sh/analytics-react` with the `"use client"` boundary already applied.
+The `next` subpath is browser-only — it re-exports the client components from
+`@opa.sh/analytics/react` with the `"use client"` boundary already applied.
 
 ## Development
 
@@ -176,12 +180,13 @@ bun run --cwd packages/analytics build:sdk
 ## Releasing
 
 Publishing is automated by [`.github/workflows/release.yml`](.github/workflows/release.yml),
-which runs **only** when a `v*` tag is pushed. It builds every package and runs
-`npm publish --provenance` in dependency order using the `NPM_TOKEN` secret.
+which runs **only** when a `v*` tag is pushed. It builds the package (core +
+`/react` + `/next` subpaths) and runs `npm publish --provenance` using the
+`NPM_TOKEN` secret.
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 ## License
