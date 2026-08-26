@@ -24,6 +24,8 @@ export type OpaGlobal = {
 	getClickId: ReturnType<typeof createTracker>["getClickId"];
 	setConsent: ReturnType<typeof createTracker>["setConsent"];
 	reset: ReturnType<typeof createTracker>["reset"];
+	pageview: ReturnType<typeof createTracker>["pageview"];
+	getVisitorId: ReturnType<typeof createTracker>["getVisitorId"];
 };
 
 /** Raw `data-*` values read off the script tag, before any parsing. Every
@@ -37,6 +39,9 @@ export type ScriptAttributes = {
 	domains?: string | null;
 	consent?: string | null;
 	queryParam?: string | null;
+	trackPageviews?: string | null;
+	hashRouting?: string | null;
+	captureLocalhost?: string | null;
 };
 
 function cleanString(value: string | null | undefined): string | undefined {
@@ -63,6 +68,17 @@ function parseConsent(
 	const clean = cleanString(value);
 	if (clean === "default" || clean === "denied") {
 		return clean;
+	}
+	return undefined;
+}
+
+function parseFlag(value: string | null | undefined): boolean | undefined {
+	const clean = cleanString(value);
+	if (clean === "true") {
+		return true;
+	}
+	if (clean === "false") {
+		return false;
 	}
 	return undefined;
 }
@@ -167,6 +183,21 @@ export function parseScriptConfig(attrs: ScriptAttributes): TrackerConfig {
 		config.queryParam = queryParam;
 	}
 
+	const trackPageviews = parseFlag(attrs.trackPageviews);
+	if (trackPageviews !== undefined) {
+		config.trackPageviews = trackPageviews;
+	}
+
+	const hashRouting = parseFlag(attrs.hashRouting);
+	if (hashRouting !== undefined) {
+		config.hashRouting = hashRouting;
+	}
+
+	const captureLocalhost = parseFlag(attrs.captureLocalhost);
+	if (captureLocalhost !== undefined) {
+		config.captureLocalhost = captureLocalhost;
+	}
+
 	return config;
 }
 
@@ -185,6 +216,9 @@ export function readScriptAttributes(
 		domains: el.getAttribute("data-domains"),
 		consent: el.getAttribute("data-consent"),
 		queryParam: el.getAttribute("data-query-param"),
+		trackPageviews: el.getAttribute("data-track-pageviews"),
+		hashRouting: el.getAttribute("data-hash-routing"),
+		captureLocalhost: el.getAttribute("data-capture-localhost"),
 	};
 }
 
@@ -252,6 +286,8 @@ export function bootstrap(): OpaGlobal | undefined {
 		getClickId: tracker.getClickId,
 		setConsent: tracker.setConsent,
 		reset: tracker.reset,
+		pageview: tracker.pageview,
+		getVisitorId: tracker.getVisitorId,
 	};
 
 	const existing = (window as unknown as { opa?: unknown }).opa;

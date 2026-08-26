@@ -1,6 +1,7 @@
-import type { LeadPayload } from "./types";
+import type { LeadPayload, PageviewPayload } from "./types";
 
 const COLLECT_PATH = "/v1/track/collect";
+const PAGEVIEW_PATH = "/v1/track/pageview";
 const SITE_KEY_HEADER = "x-opa-site-key";
 
 function trimTrailingSlash(host: string): string {
@@ -9,6 +10,10 @@ function trimTrailingSlash(host: string): string {
 
 export function collectEndpoint(apiHost: string): string {
 	return `${trimTrailingSlash(apiHost)}${COLLECT_PATH}`;
+}
+
+export function pageviewEndpoint(apiHost: string): string {
+	return `${trimTrailingSlash(apiHost)}${PAGEVIEW_PATH}`;
 }
 
 function requestHeaders(key?: string): Record<string, string> {
@@ -32,6 +37,76 @@ function bodyWithSiteKey(body: string, key: string): string {
 	} catch {
 		return body;
 	}
+}
+
+/** Best-effort `XMLHttpRequest` fallback for runtimes without `fetch`
+ * (very old browsers / some in-app webviews). Fire-and-forget — the pageview
+ * endpoint never needs a response body client-side. */
+function xhrPost(url: string, body: string, key?: string): void {
+	try {
+		if (typeof XMLHttpRequest === "undefined") {
+			return;
+		}
+		const xhr = new XMLHttpRequest();
+		xhr.open("POST", url, true);
+		xhr.setRequestHeader("Content-Type", "text/plain");
+		if (key) {
+			try {
+				xhr.setRequestHeader(SITE_KEY_HEADER, key);
+			} catch {
+				// Some restricted embeds disallow custom headers on XHR; the
+				// site key is also stamped into the body as a fallback.
+			}
+		}
+		xhr.send(body);
+	} catch {
+		// Never throw to the caller.
+	}
+}
+
+/**
+ * Sends one pageview event to `POST /v1/track/pageview`.
+ *
+ * Uses `fetch` with `keepalive: true` (survives the page unloading mid
+ * SPA-navigation) and `Content-Type: text/plain` (a CORS "simple" content
+ * type, avoiding a preflight `OPTIONS` round trip for the common case).
+ * Falls back to `XMLHttpRequest` when `fetch` is unavailable. Never throws —
+ * a dropped pageview must never break the host page.
+ */
+export async function sendPageview(
+	apiHost: string,
+	payload: PageviewPayload,
+	key?: string,
+): Promise<void> {
+	const url = pageviewEndpoint(apiHost);
+	let body: string;
+	try {
+		const withKey = key
+			? { ...(payload as unknown as Record<string, unknown>), siteKey: key }
+			: (payload as unknown as Record<string, unknown>);
+		body = JSON.stringify(withKey);
+	} catch {
+		return;
+	}
+	const headers: Record<string, string> = { "content-type": "text/plain" };
+	if (key) {
+		headers[SITE_KEY_HEADER] = key;
+	}
+	try {
+		if (typeof fetch === "function") {
+			await fetch(url, {
+				method: "POST",
+				headers,
+				body,
+				credentials: "omit",
+				keepalive: true,
+			});
+			return;
+		}
+	} catch {
+		// Fall through to the XHR fallback below.
+	}
+	xhrPost(url, body, key);
 }
 
 function isDocumentHidden(): boolean {

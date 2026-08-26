@@ -1,10 +1,11 @@
 # Opa Analytics SDK
 
 First-party, cookieless-friendly browser analytics for [Opa](https://opa.sh) —
-click attribution, `identify` / `track` for conversions, and automatic outbound
-link decoration. Ships as **one package** — `@opa.sh/analytics` — with the
-framework bindings split across import subpaths, so you `npm i` once and import
-only the entry your stack needs.
+click attribution, `identify` / `track` for conversions, automatic PII-free
+pageview capture, and automatic outbound link decoration. Ships as **one
+package** — `@opa.sh/analytics` — with the framework bindings split across
+import subpaths, so you `npm i` once and import only the entry your stack
+needs.
 
 | Import | What it is |
 | --- | --- |
@@ -20,8 +21,8 @@ Full docs: **https://opa.sh/docs/sdks/conversions**
 ## Script tag (no build step)
 
 Drop one tag on any page. On load it reads config from `data-*` attributes,
-captures the click id from the URL / first-party cookie, and exposes
-`window.opa`:
+captures the click id from the URL / first-party cookie, fires an automatic
+pageview, and exposes `window.opa`:
 
 ```html
 <script
@@ -36,6 +37,46 @@ captures the click id from the URL / first-party cookie, and exposes
   // Queue calls before the script finishes loading, or call window.opa.* after.
   window.opa.identify({ externalId: "user_123", email: "a@b.com" });
   window.opa.track("signup");
+</script>
+```
+
+### Automatic pageview capture
+
+On by default — no code required. The SDK fires one pageview on initial load
+(deferred until the tab is actually visible, so prerendered/background tabs
+don't count) and one more on every client-side SPA navigation, detected via a
+`history.pushState` patch + `popstate` (never `replaceState`, which would
+double-count non-navigational URL touch-ups). Each pageview carries a
+PII-free, cookie-persisted anonymous visitor id, a session id that rotates
+after 30 minutes of inactivity or a new UTM campaign, device/locale
+metadata, and any UTM / ad-click ids (`gclid`, `fbclid`, `ttclid`, `msclkid`,
+and more) found in the URL — never raw IP or user-agent strings; the server
+derives geo and bot classification from the request itself. Pageviews POST to
+`/v1/track/pageview` and never require a click id or a prior `identify()`.
+
+Dev/QA traffic is excluded automatically: `localhost` / `127.0.0.1` / `file:`
+pages, headless automation (`navigator.webdriver`, Cypress, PhantomJS,
+Nightmare), and a per-visitor opt-out (`localStorage.setItem("opa_ignore",
+"true")`).
+
+| Attribute | Default | What it does |
+| --- | --- | --- |
+| `data-track-pageviews` | `true` | Set to `"false"` to disable autocapture entirely (the manual `pageview()` API still works). |
+| `data-hash-routing` | `false` | Set to `"true"` to also treat `#/route` changes as navigation (hash-based routers). |
+| `data-capture-localhost` | `false` | Set to `"true"` to capture pageviews on `localhost` / `127.0.0.1` / `file:` too. |
+
+```html
+<script
+  src="https://cdn.opa.sh/sdk.js"
+  data-key="opa_pub_xxx"
+  data-hash-routing="true"
+  async
+></script>
+
+<script>
+  // Call manually any time — e.g. a virtual pageview inside a wizard step.
+  window.opa.pageview({ pathname: "/wizard/step-2", title: "Step 2" });
+  window.opa.getVisitorId(); // the anonymous visitor id backing every pageview
 </script>
 ```
 
@@ -64,6 +105,14 @@ type OpaGlobal = {
   getClickId: () => string | null;
   setConsent: (granted: boolean) => void;
   reset: () => void;
+  pageview: (overrides?: {
+    url?: string;
+    pathname?: string;
+    host?: string;
+    referrer?: string;
+    title?: string;
+  }) => Promise<void>;
+  getVisitorId: () => string | null;
 };
 
 declare global {
@@ -105,10 +154,16 @@ await opa.identify({ externalId: "user_123", email: "a@b.com" });
 await opa.track("purchase", { plan: "pro", amount: 4900 });
 ```
 
-The tracker posts to `POST /v1/track/collect` on `https://api.opa.sh`, sending
+The tracker posts `identify`/`track` events to `POST /v1/track/collect`, and
+pageviews to `POST /v1/track/pageview`, both on `https://api.opa.sh`, sending
 your public site key via the `x-opa-site-key` header (or in the JSON body when
-falling back to `navigator.sendBeacon`). Every method is SSR-safe and never
-throws to the caller.
+falling back to `navigator.sendBeacon` / `fetch` with `keepalive`). Every
+method is SSR-safe and never throws to the caller.
+
+`createTracker()` fires automatic pageview capture the same way the CDN
+bundle does (see [Automatic pageview capture](#automatic-pageview-capture)
+above) — pass `trackPageviews: false` to disable it, or `hashRouting: true` /
+`captureLocalhost: true` for the same knobs as the `data-*` attributes.
 
 ## `@opa.sh/analytics/react`
 
@@ -134,7 +189,12 @@ function Checkout() {
 ```
 
 `<OpaAnalytics config={...} />` is a zero-render component that boots a single
-tracker for the page if you do not need the `useOpa()` context.
+tracker for the page if you do not need the `useOpa()` context — use it
+**instead of** `<OpaProvider>`, not alongside it, since each creates its own
+tracker instance and mounting both double-fires every pageview. Either way,
+the tracker underneath fires the same automatic pageview capture as the core
+package — SPA navigation is detected via the tracker's own `history.pushState`
+patch, so plain React Router / Wouter / etc. work with no extra wiring.
 
 ## `@opa.sh/analytics/next`
 
@@ -144,21 +204,34 @@ npm i @opa.sh/analytics react next
 
 ```tsx
 // app/layout.tsx
-import { OpaProvider } from "@opa.sh/analytics/next";
+import { OpaAnalytics } from "@opa.sh/analytics/next";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <OpaProvider config={{ key: "opa_pub_xxx" }}>{children}</OpaProvider>
+        <OpaAnalytics config={{ key: "opa_pub_xxx" }} />
+        {children}
       </body>
     </html>
   );
 }
 ```
 
-The `next` subpath is browser-only — it re-exports the client components from
-`@opa.sh/analytics/react` with the `"use client"` boundary already applied.
+`<OpaAnalytics>` is the one component this subpath rewrites: on top of the
+core's `history.pushState`-based autocapture, it uses `usePathname()` +
+`useSearchParams()` from `next/navigation` as a reliability net for App
+Router client-side navigation, since raw `pushState` timing isn't guaranteed
+to line up with it across Next versions.
+
+`OpaProvider`/`useOpa` are re-exported as-is from `@opa.sh/analytics/react`
+for apps that call `identify`/`track` from client components — their tracker
+still autocaptures via the core's `history.pushState` patch on its own, just
+without the extra `next/navigation` net. **Mount only one of
+`<OpaAnalytics>` / `<OpaProvider>` per app** — each creates its own tracker
+instance, so using both together double-fires every pageview. If you need
+`useOpa()` *and* the App Router reliability net in the same tree, call
+`createTracker()` yourself once and share it through your own context.
 
 ## Development
 

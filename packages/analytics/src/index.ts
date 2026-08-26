@@ -4,6 +4,8 @@ export type {
 	ConsentMode,
 	IdentifyInput,
 	LeadPayload,
+	PageviewOverrides,
+	PageviewPayload,
 	Tracker,
 	TrackerConfig,
 	TrackerCookieConfig,

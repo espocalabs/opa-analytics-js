@@ -1,7 +1,20 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { createTracker } from "./index";
+import { createTracker as createRealTracker } from "./index";
+import type { TrackerConfig } from "./types";
 
 const SITE_KEY = "opa_pub_test";
+
+/**
+ * This file predates pageview autocapture and asserts exact `fetchCalls`
+ * counts/indices for `/v1/track/collect` (identify/track). Pageview
+ * autocapture defaults to `true` and would fire its own `/v1/track/pageview`
+ * request on every `createTracker()` call here, throwing those counts off —
+ * so every test in this file opts out of it. Pageview/autocapture behavior
+ * itself is covered end-to-end in `create-tracker.pageview.test.ts`.
+ */
+function createTracker(config: TrackerConfig = {}) {
+	return createRealTracker({ trackPageviews: false, ...config });
+}
 
 type Listener = (event: { type: string; target: unknown }) => void;
 

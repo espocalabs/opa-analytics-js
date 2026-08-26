@@ -18,6 +18,12 @@ export type TrackerConfig = {
 	consent?: ConsentMode;
 	queryParam?: string;
 	identifyEventName?: string;
+	/** Automatic pageview capture (initial load + SPA navigation). Default `true`. */
+	trackPageviews?: boolean;
+	/** Also treat `hashchange` as a route change (hash-based routers). Default `false`. */
+	hashRouting?: boolean;
+	/** Capture pageviews on `localhost`/`127.0.0.1`/`file:` pages too. Default `false`. */
+	captureLocalhost?: boolean;
 };
 
 export type IdentifyInput = {
@@ -40,6 +46,62 @@ export type LeadPayload = {
 	metadata?: Record<string, unknown>;
 };
 
+/**
+ * Client-collectable fields sent to `POST /v1/track/pageview`. The server
+ * derives geo/user-agent/bot classification from the request itself — never
+ * send raw IP or UA strings from the client.
+ */
+export type PageviewPayload = {
+	event: "pageview";
+	siteKey?: string;
+	/** Anonymous, cookie-persisted visitor id (`opa_vid`). Stitches pageviews
+	 * from the same browser together — never PII. */
+	anonId: string;
+	/** Rotates after 30min inactivity or when the UTM set changes. */
+	sessionId: string;
+	clickId?: string;
+	url: string;
+	pathname: string;
+	host: string;
+	referrer: string;
+	title?: string;
+	screenW: number;
+	screenH: number;
+	viewportW: number;
+	viewportH: number;
+	dpr: number;
+	language: string;
+	timezone: string;
+	timezoneOffset: number;
+	utmSource?: string;
+	utmMedium?: string;
+	utmCampaign?: string;
+	utmTerm?: string;
+	utmContent?: string;
+	fbclid?: string;
+	gclid?: string;
+	ttclid?: string;
+	msclkid?: string;
+	gadSource?: string;
+	wbraid?: string;
+	gbraid?: string;
+	kwaiClickId?: string;
+	/** JSON string of long-tail click ids (li_fat_id, mc_cid, igshid, twclid,
+	 * dclid, gclsrc) — kept out of the top-level shape so adding more never
+	 * requires a payload/schema migration. */
+	clickIdsRaw?: string;
+	dnt?: string | null;
+	gpc?: boolean;
+	consentState: ConsentMode;
+	ts: number;
+};
+
+/** Fields a caller may override on a manual `pageview()` call — everything
+ * else (ids, device/locale, UTMs, consent) is always collected fresh. */
+export type PageviewOverrides = Partial<
+	Pick<PageviewPayload, "url" | "pathname" | "host" | "referrer" | "title">
+>;
+
 export type Tracker = {
 	identify: (input: IdentifyInput) => Promise<void>;
 	track: (eventName: string, props?: TrackProperties) => Promise<void>;
@@ -48,4 +110,12 @@ export type Tracker = {
 	reset: () => void;
 	ready: (cb: () => void) => void;
 	init: () => void;
+	/** Sends one pageview now. Autocapture calls this internally on initial
+	 * load and SPA navigation; call it directly for manual/SPA-framework
+	 * integrations (e.g. `@opa.sh/analytics/next`). Never requires `clickId`
+	 * or a prior `identify()` — only the site key. */
+	pageview: (overrides?: PageviewOverrides) => Promise<void>;
+	/** The anonymous visitor id (`opa_vid`), generating and persisting one on
+	 * first access if consent allows. `null` outside a browser. */
+	getVisitorId: () => string | null;
 };

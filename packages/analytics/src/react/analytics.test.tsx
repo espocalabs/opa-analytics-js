@@ -13,6 +13,8 @@ function fakeTracker(): Tracker {
 		reset: mock(() => {}),
 		ready: mock(() => {}),
 		init: mock(() => {}),
+		pageview: mock(async () => {}),
+		getVisitorId: mock(() => null),
 	};
 }
 
