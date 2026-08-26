@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import type { Tracker, TrackerConfig } from "@opa.sh/analytics";
 import { cleanup, render } from "@testing-library/react";
+import type { Tracker, TrackerConfig } from "../index";
 import { resetOpaAnalyticsForTests } from "./analytics";
 import { OpaAnalytics } from "./index";
 

@@ -1,7 +1,8 @@
 name: Release
 
-# Publishes the packages to npm ONLY when a v* tag is pushed.
-# The owner cuts a release with, e.g.:  git tag v0.1.0 && git push origin v0.1.0
+# Publishes the single @opa.sh/analytics package to npm ONLY when a v* tag is
+# pushed. The owner cuts a release with, e.g.:  git tag v0.2.0 && git push origin v0.2.0
+# (React/Next bindings ship as the /react and /next subpaths of this one package.)
 on:
   push:
     tags:
@@ -32,53 +33,16 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build all packages
+      - name: Build the package
         run: bun run -F '*' build
 
-      # `npm publish` does NOT rewrite `workspace:*` dependency ranges (unlike
-      # `bun publish`), so without this step the tarballs ship
-      # `"@opa.sh/analytics-react": "workspace:*"` and are uninstallable off the
-      # workspace. Rewrite every workspace: range to `^<version>` before
-      # publishing (all packages are versioned in lockstep).
-      - name: Rewrite workspace deps to concrete versions
-        run: |
-          for pkg in analytics analytics-react analytics-next; do
-            node --input-type=module -e '
-              import fs from "node:fs";
-              const path = `packages/${process.argv[1]}/package.json`;
-              const p = JSON.parse(fs.readFileSync(path, "utf8"));
-              for (const field of ["dependencies", "peerDependencies", "optionalDependencies"]) {
-                const deps = p[field];
-                if (!deps) continue;
-                for (const [name, range] of Object.entries(deps)) {
-                  if (typeof range === "string" && range.startsWith("workspace:")) {
-                    deps[name] = `^${p.version}`;
-                  }
-                }
-              }
-              fs.writeFileSync(path, JSON.stringify(p, null, "\t") + "\n");
-            ' "$pkg"
-          done
-          echo "Deps after rewrite:"
-          grep -H "@opa.sh/analytics" packages/*/package.json || true
-
-      # Publish in dependency order: the core first, then the packages that
-      # depend on it. --provenance requires the id-token permission above.
+      # Single package now — the core plus its /react and /next subpaths, all
+      # published as `@opa.sh/analytics`. No `workspace:*` deps to rewrite (the
+      # bindings are subpaths, not sibling packages). --provenance requires the
+      # id-token permission above.
       - name: Publish @opa.sh/analytics
         run: npm publish --access public --provenance
         working-directory: packages/analytics
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @opa.sh/analytics-react
-        run: npm publish --access public --provenance
-        working-directory: packages/analytics-react
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @opa.sh/analytics-next
-        run: npm publish --access public --provenance
-        working-directory: packages/analytics-next
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

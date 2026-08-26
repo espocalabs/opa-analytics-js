@@ -1,7 +1,7 @@
 {
 	"name": "@opa.sh/analytics",
-	"version": "0.1.2",
-	"description": "Opa browser analytics SDK — first-party click attribution, identify/track, outbound link decoration.",
+	"version": "0.2.0",
+	"description": "Opa browser analytics SDK — first-party click attribution, identify/track, outbound link decoration. Vanilla JS core with /react and /next subpaths.",
 	"license": "MIT",
 	"keywords": [
 		"opa",
@@ -9,7 +9,10 @@
 		"attribution",
 		"conversion-tracking",
 		"tracker",
-		"first-party"
+		"first-party",
+		"react",
+		"next",
+		"nextjs"
 	],
 	"repository": {
 		"type": "git",
@@ -33,7 +36,30 @@
 				"types": "./dist/index.d.cts",
 				"default": "./dist/index.cjs"
 			}
-		}
+		},
+		"./react": {
+			"bun": "./src/react/index.ts",
+			"import": {
+				"types": "./dist/react/index.d.ts",
+				"default": "./dist/react/index.js"
+			},
+			"require": {
+				"types": "./dist/react/index.d.cts",
+				"default": "./dist/react/index.cjs"
+			}
+		},
+		"./next": {
+			"bun": "./src/next/index.ts",
+			"import": {
+				"types": "./dist/next/index.d.ts",
+				"default": "./dist/next/index.js"
+			},
+			"require": {
+				"types": "./dist/next/index.d.cts",
+				"default": "./dist/next/index.cjs"
+			}
+		},
+		"./package.json": "./package.json"
 	},
 	"files": [
 		"dist",
@@ -43,16 +69,36 @@
 		"access": "public"
 	},
 	"scripts": {
-		"build": "tsup src/index.ts --format esm,cjs --dts --clean",
+		"build": "tsup src/index.ts src/react/index.ts src/next/index.ts --format esm,cjs --dts --clean --external react --external react-dom --external next",
 		"build:sdk": "bun run scripts/build-sdk.ts",
 		"typecheck": "tsc --noEmit",
 		"test": "bun test",
 		"lint": "biome check ."
 	},
+	"peerDependencies": {
+		"next": "^16",
+		"react": "^18 || ^19"
+	},
+	"peerDependenciesMeta": {
+		"next": {
+			"optional": true
+		},
+		"react": {
+			"optional": true
+		}
+	},
 	"devDependencies": {
+		"@happy-dom/global-registrator": "^20.11.1",
+		"@testing-library/react": "^16.3.2",
 		"@types/bun": "^1.3.14",
 		"@types/node": "^25.9.1",
+		"@types/react": "^19.2.15",
+		"@types/react-dom": "^19.2.3",
 		"esbuild": "^0.28.1",
+		"happy-dom": "^20.11.1",
+		"next": "^16.3.1",
+		"react": "^19.2.6",
+		"react-dom": "^19.2.6",
 		"tsup": "^8.5.0",
 		"typescript": "^6.0.3"
 	}

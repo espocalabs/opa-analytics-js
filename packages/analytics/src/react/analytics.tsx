@@ -1,11 +1,11 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import {
 	createTracker as defaultCreateTracker,
 	type Tracker,
 	type TrackerConfig,
-} from "@opa.sh/analytics";
-import { useEffect, useRef } from "react";
+} from "../index";
 
 export type OpaAnalyticsProps = {
 	config?: TrackerConfig;

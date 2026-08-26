@@ -8,7 +8,7 @@ export type {
 	TrackerConfig,
 	TrackerCookieConfig,
 	TrackProperties,
-} from "@opa.sh/analytics";
+} from "../index";
 export type { OpaAnalyticsProps } from "./analytics";
 export { OpaAnalytics } from "./analytics";
 export type { OpaClient, OpaProviderProps } from "./provider";
