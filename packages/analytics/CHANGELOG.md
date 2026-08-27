@@ -3,7 +3,21 @@
 All notable changes to `@opa.sh/analytics` are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased] — 0.3.0
+## [0.3.1]
+
+### Fixed
+
+- **README install commands.** The `/react` and `/next` sections showed
+  `npm i @opa.sh/analytics react` / `... react next` — misleading, since
+  `react`/`next` are peer dependencies you already have and the framework
+  bindings ship as import subpaths of the single package. Corrected to
+  `npm i @opa.sh/analytics`.
+- **`data-domains` docs.** Clarified that it drives cross-domain outbound-link
+  decoration (appending `opa_id` to links pointing at those domains so
+  attribution survives a jump to a domain the first-party cookie can't reach),
+  not site-key access control.
+
+## [0.3.0]
 
 ### Added
 

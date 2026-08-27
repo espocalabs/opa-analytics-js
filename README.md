@@ -40,6 +40,17 @@ pageview, and exposes `window.opa`:
 </script>
 ```
 
+> **`data-domains`** is for **cross-domain attribution**, not access control. The
+> click id (`opa_id`) lives in a first-party cookie that can't be read on a
+> *different* domain — so if your checkout is on another domain (a hosted
+> checkout, a payment page), the SDK appends `?opa_id=…` to outbound links
+> pointing at the domains you list here, carrying the attribution across. You
+> only need it for domains your cookie can't reach — subdomains already covered
+> by a `.yourdomain.com` cookie (`data-cookie-options`) don't need to be listed.
+> (Locking a site key to specific origins is a separate, server-side setting on
+> the key itself, in **Settings → Site keys**.) Accepts a JSON array
+> (`'["a.com","b.com"]'`) or a bare comma-separated list (`"a.com,b.com"`).
+
 ### Automatic pageview capture
 
 On by default — no code required. The SDK fires one pageview on initial load
@@ -240,8 +251,11 @@ attributes.
 ## `@opa.sh/analytics/react`
 
 ```bash
-npm i @opa.sh/analytics react
+npm i @opa.sh/analytics
 ```
+
+> `react` is a peer dependency — you already have it. This is one package with
+> a `/react` subpath, not a separate install.
 
 ```tsx
 import { OpaProvider, useOpa } from "@opa.sh/analytics/react";
@@ -271,8 +285,11 @@ patch, so plain React Router / Wouter / etc. work with no extra wiring.
 ## `@opa.sh/analytics/next`
 
 ```bash
-npm i @opa.sh/analytics react next
+npm i @opa.sh/analytics
 ```
+
+> `react` and `next` are peer dependencies — you already have them. This is one
+> package with a `/next` subpath, not a separate install.
 
 ```tsx
 // app/layout.tsx
