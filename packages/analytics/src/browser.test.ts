@@ -126,8 +126,57 @@ describe("parseScriptConfig", () => {
 			domains: null,
 			consent: null,
 			queryParam: null,
+			trackPageviews: null,
+			hashRouting: null,
+			captureLocalhost: null,
+			props: null,
+			trackClicks: null,
 		};
 		expect(parseScriptConfig(attrs)).toEqual({});
+	});
+
+	test("data-track-pageviews=false disables autocapture", () => {
+		expect(parseScriptConfig({ trackPageviews: "false" })).toEqual({
+			trackPageviews: false,
+		});
+	});
+
+	test("data-track-pageviews=true is explicit but matches the default", () => {
+		expect(parseScriptConfig({ trackPageviews: "true" })).toEqual({
+			trackPageviews: true,
+		});
+	});
+
+	test("data-hash-routing=true and data-capture-localhost=true parse to booleans", () => {
+		expect(
+			parseScriptConfig({ hashRouting: "true", captureLocalhost: "true" }),
+		).toEqual({ hashRouting: true, captureLocalhost: true });
+	});
+
+	test("an unrecognized boolean-flag value is ignored (falls through to the default)", () => {
+		expect(parseScriptConfig({ trackPageviews: "nope" })).toEqual({});
+	});
+
+	test("parses data-props JSON into the config's default props bag", () => {
+		const config = parseScriptConfig({
+			props: JSON.stringify({ plan: "pro", env: "prod" }),
+		});
+		expect(config.props).toEqual({ plan: "pro", env: "prod" });
+	});
+
+	test("tolerates malformed data-props JSON (no throw, field omitted)", () => {
+		expect(parseScriptConfig({ props: "{not json" })).toEqual({});
+	});
+
+	test("ignores a non-object data-props payload", () => {
+		expect(parseScriptConfig({ props: JSON.stringify([1, 2]) })).toEqual({});
+		expect(parseScriptConfig({ props: JSON.stringify("nope") })).toEqual({});
+	});
+
+	test("data-track-clicks=false disables declarative click tracking", () => {
+		expect(parseScriptConfig({ trackClicks: "false" })).toEqual({
+			trackClicks: false,
+		});
 	});
 });
 
@@ -157,6 +206,11 @@ describe("readScriptAttributes", () => {
 			domains: '["x.com"]',
 			consent: "default",
 			queryParam: "opa_id",
+			trackPageviews: null,
+			hashRouting: null,
+			captureLocalhost: null,
+			props: null,
+			trackClicks: null,
 		});
 	});
 

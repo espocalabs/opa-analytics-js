@@ -13,6 +13,9 @@ export type OpaClient = {
 	getClickId: Tracker["getClickId"];
 	setConsent: Tracker["setConsent"];
 	reset: Tracker["reset"];
+	pageview: Tracker["pageview"];
+	getVisitorId: Tracker["getVisitorId"];
+	setProps: Tracker["setProps"];
 };
 
 export type OpaProviderProps = {
@@ -34,6 +37,9 @@ function toClient(tracker: Tracker): OpaClient {
 		getClickId: tracker.getClickId,
 		setConsent: tracker.setConsent,
 		reset: tracker.reset,
+		pageview: tracker.pageview,
+		getVisitorId: tracker.getVisitorId,
+		setProps: tracker.setProps,
 	};
 }
 

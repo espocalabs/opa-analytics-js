@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { collectEndpoint, createTransport } from "./transport";
+import {
+	collectEndpoint,
+	createTransport,
+	pageviewEndpoint,
+	sendPageview,
+} from "./transport";
+import type { PageviewPayload } from "./types";
 
 const originals = {
 	document: globalThis.document,
@@ -194,5 +200,159 @@ describe("createTransport", () => {
 			eventName: "Signup",
 			customerExternalId: "u1",
 		});
+	});
+});
+
+describe("pageviewEndpoint", () => {
+	test("joins apiHost with /v1/track/pageview and strips a trailing slash", () => {
+		expect(pageviewEndpoint("https://api.opa.sh")).toBe(
+			"https://api.opa.sh/v1/track/pageview",
+		);
+		expect(pageviewEndpoint("https://api.opa.sh/")).toBe(
+			"https://api.opa.sh/v1/track/pageview",
+		);
+	});
+});
+
+describe("sendPageview", () => {
+	const samplePayload: PageviewPayload = {
+		event: "pageview",
+		anonId: "vid_1",
+		sessionId: "sid_1",
+		url: "https://shop.example.com/landing",
+		pathname: "/landing",
+		host: "shop.example.com",
+		referrer: "",
+		screenW: 1920,
+		screenH: 1080,
+		viewportW: 1280,
+		viewportH: 800,
+		dpr: 2,
+		language: "en-US",
+		timezone: "America/Sao_Paulo",
+		timezoneOffset: 180,
+		dnt: null,
+		gpc: false,
+		consentState: "default",
+		ts: 1000,
+	};
+
+	test("POSTs via fetch with keepalive:true and Content-Type: text/plain", async () => {
+		const calls: Array<{ url: string; init: RequestInit }> = [];
+		globalThis.fetch = mock(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				calls.push({ url: String(input), init: init ?? {} });
+				return new Response("", { status: 202 });
+			},
+		) as unknown as typeof fetch;
+
+		await sendPageview("https://api.opa.sh", samplePayload, "opa_pub_test");
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.url).toBe("https://api.opa.sh/v1/track/pageview");
+		expect(calls[0]?.init.method).toBe("POST");
+		expect(calls[0]?.init.keepalive).toBe(true);
+		expect(calls[0]?.init.headers).toEqual({
+			"content-type": "text/plain",
+			"x-opa-site-key": "opa_pub_test",
+		});
+	});
+
+	test("stamps the site key into the JSON body alongside the header", async () => {
+		const calls: Array<{ url: string; init: RequestInit }> = [];
+		globalThis.fetch = mock(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				calls.push({ url: String(input), init: init ?? {} });
+				return new Response("", { status: 202 });
+			},
+		) as unknown as typeof fetch;
+
+		await sendPageview("https://api.opa.sh", samplePayload, "opa_pub_test");
+
+		const body = JSON.parse(String(calls[0]?.init.body));
+		expect(body.siteKey).toBe("opa_pub_test");
+		expect(body.anonId).toBe("vid_1");
+		expect(body.sessionId).toBe("sid_1");
+		expect(body.pathname).toBe("/landing");
+	});
+
+	test("omits siteKey from headers and body when no key is configured", async () => {
+		const calls: Array<{ url: string; init: RequestInit }> = [];
+		globalThis.fetch = mock(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				calls.push({ url: String(input), init: init ?? {} });
+				return new Response("", { status: 202 });
+			},
+		) as unknown as typeof fetch;
+
+		await sendPageview("https://api.opa.sh", samplePayload);
+
+		expect(calls[0]?.init.headers).toEqual({ "content-type": "text/plain" });
+		const body = JSON.parse(String(calls[0]?.init.body));
+		expect(body.siteKey).toBeUndefined();
+	});
+
+	test("falls back to XMLHttpRequest when fetch is unavailable", async () => {
+		const originalFetch = globalThis.fetch;
+		const originalXhr = globalThis.XMLHttpRequest;
+		delete (globalThis as { fetch?: unknown }).fetch;
+		const sent: Array<{
+			method: string;
+			url: string;
+			headers: Record<string, string>;
+			body: string;
+		}> = [];
+		class FakeXhr {
+			private method = "";
+			private url = "";
+			private headers: Record<string, string> = {};
+			open(method: string, url: string) {
+				this.method = method;
+				this.url = url;
+			}
+			setRequestHeader(name: string, value: string) {
+				this.headers[name] = value;
+			}
+			send(body: string) {
+				sent.push({
+					method: this.method,
+					url: this.url,
+					headers: this.headers,
+					body,
+				});
+			}
+		}
+		Object.defineProperty(globalThis, "XMLHttpRequest", {
+			value: FakeXhr,
+			configurable: true,
+			writable: true,
+		});
+
+		try {
+			await sendPageview("https://api.opa.sh", samplePayload, "opa_pub_test");
+		} finally {
+			globalThis.fetch = originalFetch;
+			Object.defineProperty(globalThis, "XMLHttpRequest", {
+				value: originalXhr,
+				configurable: true,
+				writable: true,
+			});
+		}
+
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.method).toBe("POST");
+		expect(sent[0]?.url).toBe("https://api.opa.sh/v1/track/pageview");
+		expect(sent[0]?.headers["Content-Type"]).toBe("text/plain");
+		expect(sent[0]?.headers["x-opa-site-key"]).toBe("opa_pub_test");
+		expect(JSON.parse(String(sent[0]?.body)).siteKey).toBe("opa_pub_test");
+	});
+
+	test("never throws when fetch rejects", async () => {
+		globalThis.fetch = mock(async () => {
+			throw new TypeError("Failed to fetch");
+		}) as unknown as typeof fetch;
+		await expect(
+			sendPageview("https://api.opa.sh", samplePayload, "opa_pub_test"),
+		).resolves.toBeUndefined();
 	});
 });

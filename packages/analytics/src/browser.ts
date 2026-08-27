@@ -24,6 +24,9 @@ export type OpaGlobal = {
 	getClickId: ReturnType<typeof createTracker>["getClickId"];
 	setConsent: ReturnType<typeof createTracker>["setConsent"];
 	reset: ReturnType<typeof createTracker>["reset"];
+	pageview: ReturnType<typeof createTracker>["pageview"];
+	getVisitorId: ReturnType<typeof createTracker>["getVisitorId"];
+	setProps: ReturnType<typeof createTracker>["setProps"];
 };
 
 /** Raw `data-*` values read off the script tag, before any parsing. Every
@@ -37,6 +40,11 @@ export type ScriptAttributes = {
 	domains?: string | null;
 	consent?: string | null;
 	queryParam?: string | null;
+	trackPageviews?: string | null;
+	hashRouting?: string | null;
+	captureLocalhost?: string | null;
+	props?: string | null;
+	trackClicks?: string | null;
 };
 
 function cleanString(value: string | null | undefined): string | undefined {
@@ -63,6 +71,17 @@ function parseConsent(
 	const clean = cleanString(value);
 	if (clean === "default" || clean === "denied") {
 		return clean;
+	}
+	return undefined;
+}
+
+function parseFlag(value: string | null | undefined): boolean | undefined {
+	const clean = cleanString(value);
+	if (clean === "true") {
+		return true;
+	}
+	if (clean === "false") {
+		return false;
 	}
 	return undefined;
 }
@@ -102,6 +121,16 @@ function parseCookieOptions(
 		cookie.expiresInDays = record.expiresInDays;
 	}
 	return Object.keys(cookie).length > 0 ? cookie : undefined;
+}
+
+function parseProps(
+	value: string | null | undefined,
+): Record<string, unknown> | undefined {
+	const parsed = parseJson(value);
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return undefined;
+	}
+	return parsed as Record<string, unknown>;
 }
 
 function parseDomains(value: string | null | undefined): string[] | undefined {
@@ -167,6 +196,31 @@ export function parseScriptConfig(attrs: ScriptAttributes): TrackerConfig {
 		config.queryParam = queryParam;
 	}
 
+	const trackPageviews = parseFlag(attrs.trackPageviews);
+	if (trackPageviews !== undefined) {
+		config.trackPageviews = trackPageviews;
+	}
+
+	const hashRouting = parseFlag(attrs.hashRouting);
+	if (hashRouting !== undefined) {
+		config.hashRouting = hashRouting;
+	}
+
+	const captureLocalhost = parseFlag(attrs.captureLocalhost);
+	if (captureLocalhost !== undefined) {
+		config.captureLocalhost = captureLocalhost;
+	}
+
+	const props = parseProps(attrs.props);
+	if (props !== undefined) {
+		config.props = props;
+	}
+
+	const trackClicks = parseFlag(attrs.trackClicks);
+	if (trackClicks !== undefined) {
+		config.trackClicks = trackClicks;
+	}
+
 	return config;
 }
 
@@ -185,6 +239,11 @@ export function readScriptAttributes(
 		domains: el.getAttribute("data-domains"),
 		consent: el.getAttribute("data-consent"),
 		queryParam: el.getAttribute("data-query-param"),
+		trackPageviews: el.getAttribute("data-track-pageviews"),
+		hashRouting: el.getAttribute("data-hash-routing"),
+		captureLocalhost: el.getAttribute("data-capture-localhost"),
+		props: el.getAttribute("data-props"),
+		trackClicks: el.getAttribute("data-track-clicks"),
 	};
 }
 
@@ -252,6 +311,9 @@ export function bootstrap(): OpaGlobal | undefined {
 		getClickId: tracker.getClickId,
 		setConsent: tracker.setConsent,
 		reset: tracker.reset,
+		pageview: tracker.pageview,
+		getVisitorId: tracker.getVisitorId,
+		setProps: tracker.setProps,
 	};
 
 	const existing = (window as unknown as { opa?: unknown }).opa;
