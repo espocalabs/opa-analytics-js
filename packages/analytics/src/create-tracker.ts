@@ -179,11 +179,12 @@ function isOptedOut(): boolean {
 	}
 }
 
-/** Pageview capture exclusions: dev/QA localhost, headless automation, and a
- * per-visitor opt-out flag. Checked before every pageview send — manual and
- * autocaptured alike — so a real visit is never captured from an excluded
- * context just because a caller invoked `pageview()` directly. */
-function isPageviewExcluded(captureLocalhost: boolean): boolean {
+/** Autocapture exclusions shared by pageviews AND declarative `data-opa-event`
+ * click tracking: dev/QA localhost, headless automation, and a per-visitor
+ * opt-out flag. Checked before every pageview send — manual and autocaptured
+ * alike — so a real visit is never captured from an excluded context just
+ * because a caller invoked `pageview()` directly. */
+function isCaptureExcluded(captureLocalhost: boolean): boolean {
 	try {
 		if (typeof window === "undefined" || typeof document === "undefined") {
 			return true;
@@ -238,6 +239,67 @@ function safeGlobalPrivacyControl(): boolean {
 	}
 }
 
+const DATA_OPA_PREFIX = "data-opa-";
+
+/** `plano-anual` -> `planoAnual` — same convention the DOM's own `.dataset`
+ * uses, applied manually (via `getAttribute`/`getAttributeNames`, not
+ * `.dataset`) so this works against plain objects in tests too. */
+function kebabToCamel(input: string): string {
+	return input.replace(/-([a-z0-9])/g, (_match, char: string) =>
+		char.toUpperCase(),
+	);
+}
+
+/** Finds the closest ancestor (inclusive) carrying `data-opa-event`, given a
+ * click's `event.target`. */
+function closestTaggedElement(target: EventTarget | null): {
+	getAttribute(name: string): string | null;
+	getAttributeNames?: () => string[];
+} | null {
+	if (!target || typeof target !== "object") {
+		return null;
+	}
+	const el = target as {
+		closest?: (selector: string) => unknown;
+	};
+	if (typeof el.closest !== "function") {
+		return null;
+	}
+	return el.closest("[data-opa-event]") as {
+		getAttribute(name: string): string | null;
+		getAttributeNames?: () => string[];
+	} | null;
+}
+
+/** Every OTHER `data-opa-*` attribute on a tagged element becomes a metadata
+ * key — `data-opa-plano-anual="pro"` -> `{ planoAnual: "pro" }`. */
+function collectEventMetadata(el: {
+	getAttribute(name: string): string | null;
+	getAttributeNames?: () => string[];
+}): Record<string, string> {
+	const metadata: Record<string, string> = {};
+	try {
+		const names =
+			typeof el.getAttributeNames === "function" ? el.getAttributeNames() : [];
+		for (const name of names) {
+			if (!name.startsWith(DATA_OPA_PREFIX) || name === "data-opa-event") {
+				continue;
+			}
+			const key = kebabToCamel(name.slice(DATA_OPA_PREFIX.length));
+			if (!key) {
+				continue;
+			}
+			const value = el.getAttribute(name);
+			if (value !== null) {
+				metadata[key] = value;
+			}
+		}
+	} catch {
+		// Never throw from a click handler.
+	}
+	return metadata;
+}
+
 export function createTracker(config: TrackerConfig = {}): Tracker {
 	const apiHost = config.apiHost ?? DEFAULT_API_HOST;
 	const queryParam = config.queryParam ?? DEFAULT_QUERY_PARAM;
@@ -250,6 +312,9 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 	const trackPageviews = config.trackPageviews ?? true;
 	const hashRouting = config.hashRouting ?? false;
 	const captureLocalhost = config.captureLocalhost ?? false;
+	const trackClicks = config.trackClicks ?? true;
+	const initialProps: Record<string, unknown> =
+		config.props && typeof config.props === "object" ? { ...config.props } : {};
 
 	const siteKey =
 		typeof config.key === "string" && config.key.trim().length > 0
@@ -261,10 +326,12 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 	let currentExternalId: string | null = null;
 	let memoryVisitorId: string | null = null;
 	let memorySession: SessionState | null = null;
+	let defaultProps: Record<string, unknown> = { ...initialProps };
 	let ready = false;
 	const readyQueue: Array<() => void> = [];
 	let clickBound = false;
 	let autocaptureBound = false;
+	let eventClickBound = false;
 	let lastFiredPath: string | null = null;
 	let coalesceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -423,9 +490,21 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 			if (clickId) {
 				payload.clickId = clickId;
 			}
+			const mergedProps = omitEmpty({ ...defaultProps, ...overrides?.props });
+			if (mergedProps) {
+				payload.props = mergedProps;
+			}
 			return payload;
 		} catch {
 			return null;
+		}
+	}
+
+	function setProps(props: Record<string, unknown>): void {
+		try {
+			defaultProps = { ...defaultProps, ...props };
+		} catch {
+			// Never throw to the caller.
 		}
 	}
 
@@ -435,7 +514,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 				missingSiteKey();
 				return;
 			}
-			if (isPageviewExcluded(captureLocalhost)) {
+			if (isCaptureExcluded(captureLocalhost)) {
 				return;
 			}
 			const payload = collectPageviewPayload(overrides);
@@ -450,14 +529,14 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 	}
 
 	function fireInitialPageview(): void {
-		if (!trackPageviews || isPageviewExcluded(captureLocalhost)) {
+		if (!trackPageviews || isCaptureExcluded(captureLocalhost)) {
 			return;
 		}
 		void pageview();
 	}
 
 	function scheduleAutoPageview(): void {
-		if (!trackPageviews || isPageviewExcluded(captureLocalhost)) {
+		if (!trackPageviews || isCaptureExcluded(captureLocalhost)) {
 			return;
 		}
 		const path = normalizedPathname();
@@ -513,6 +592,47 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 		}
 	}
 
+	/**
+	 * Declarative `data-opa-event` click tracking — sugar over `track()`, the
+	 * SAME conversion pipeline with the SAME requirements: needs a `clickId`
+	 * and a prior `identify()`, exactly like calling `track()` directly. A tap
+	 * with no identify/clickId yet is a silent no-op, same as `track()` today.
+	 *
+	 * One delegated bubble-phase listener on `document` (works for elements
+	 * added after the fact / SPA re-renders) using `closest("[data-opa-event]")`
+	 * to find the tagged ancestor. Every other `data-opa-*` attribute on that
+	 * element becomes a metadata key (kebab-case -> camelCase, e.g.
+	 * `data-opa-plano-anual` -> `planoAnual`).
+	 */
+	function bindDeclarativeEventTracking(): void {
+		if (eventClickBound || !trackClicks) {
+			return;
+		}
+		if (typeof document === "undefined" || !document.addEventListener) {
+			return;
+		}
+		eventClickBound = true;
+		document.addEventListener("click", (event) => {
+			try {
+				if (isCaptureExcluded(captureLocalhost)) {
+					return;
+				}
+				const el = closestTaggedElement(event.target);
+				if (!el) {
+					return;
+				}
+				const eventName = el.getAttribute("data-opa-event");
+				if (!eventName) {
+					return;
+				}
+				const metadata = collectEventMetadata(el);
+				void track(eventName, metadata);
+			} catch {
+				// Never throw from a click handler.
+			}
+		});
+	}
+
 	function markReady(): void {
 		ready = true;
 		const queued = readyQueue.splice(0);
@@ -545,6 +665,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 				transport.bindUnload();
 				bindAutocapture();
 				bindInitialPageview();
+				bindDeclarativeEventTracking();
 			}
 			markReady();
 		} catch {
@@ -695,6 +816,9 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 			memoryVisitorId = null;
 			memorySession = null;
 			lastFiredPath = null;
+			// Restore the static config/`data-props` defaults, not an empty bag —
+			// per-user context set via setProps() is what should go stale here.
+			defaultProps = { ...initialProps };
 			eraseCookie(queryParam, { domain: cookieDomain, path: cookiePath });
 			eraseCookie(VISITOR_COOKIE, { domain: cookieDomain, path: cookiePath });
 			eraseCookie(SESSION_COOKIE, { domain: cookieDomain, path: cookiePath });
@@ -727,5 +851,6 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 		init,
 		pageview,
 		getVisitorId: resolveVisitorId,
+		setProps,
 	};
 }

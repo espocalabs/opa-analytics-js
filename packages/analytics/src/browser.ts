@@ -26,6 +26,7 @@ export type OpaGlobal = {
 	reset: ReturnType<typeof createTracker>["reset"];
 	pageview: ReturnType<typeof createTracker>["pageview"];
 	getVisitorId: ReturnType<typeof createTracker>["getVisitorId"];
+	setProps: ReturnType<typeof createTracker>["setProps"];
 };
 
 /** Raw `data-*` values read off the script tag, before any parsing. Every
@@ -42,6 +43,8 @@ export type ScriptAttributes = {
 	trackPageviews?: string | null;
 	hashRouting?: string | null;
 	captureLocalhost?: string | null;
+	props?: string | null;
+	trackClicks?: string | null;
 };
 
 function cleanString(value: string | null | undefined): string | undefined {
@@ -118,6 +121,16 @@ function parseCookieOptions(
 		cookie.expiresInDays = record.expiresInDays;
 	}
 	return Object.keys(cookie).length > 0 ? cookie : undefined;
+}
+
+function parseProps(
+	value: string | null | undefined,
+): Record<string, unknown> | undefined {
+	const parsed = parseJson(value);
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return undefined;
+	}
+	return parsed as Record<string, unknown>;
 }
 
 function parseDomains(value: string | null | undefined): string[] | undefined {
@@ -198,6 +211,16 @@ export function parseScriptConfig(attrs: ScriptAttributes): TrackerConfig {
 		config.captureLocalhost = captureLocalhost;
 	}
 
+	const props = parseProps(attrs.props);
+	if (props !== undefined) {
+		config.props = props;
+	}
+
+	const trackClicks = parseFlag(attrs.trackClicks);
+	if (trackClicks !== undefined) {
+		config.trackClicks = trackClicks;
+	}
+
 	return config;
 }
 
@@ -219,6 +242,8 @@ export function readScriptAttributes(
 		trackPageviews: el.getAttribute("data-track-pageviews"),
 		hashRouting: el.getAttribute("data-hash-routing"),
 		captureLocalhost: el.getAttribute("data-capture-localhost"),
+		props: el.getAttribute("data-props"),
+		trackClicks: el.getAttribute("data-track-clicks"),
 	};
 }
 
@@ -288,6 +313,7 @@ export function bootstrap(): OpaGlobal | undefined {
 		reset: tracker.reset,
 		pageview: tracker.pageview,
 		getVisitorId: tracker.getVisitorId,
+		setProps: tracker.setProps,
 	};
 
 	const existing = (window as unknown as { opa?: unknown }).opa;

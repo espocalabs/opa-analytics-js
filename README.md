@@ -80,6 +80,73 @@ Nightmare), and a per-visitor opt-out (`localStorage.setItem("opa_ignore",
 </script>
 ```
 
+### Custom metadata (props)
+
+Every pageview can carry a free-form JSON metadata bag (`props`, capped at
+8KB server-side) — the pageview equivalent of the `properties` you already
+pass to `track()`. There are three ways to set it, and they merge together
+(per-call wins, key by key):
+
+1. **Site-wide defaults at init**, via `data-props` (JSON) or `config.props`.
+2. **Update the defaults at runtime**, via `window.opa.setProps(props)` /
+   `tracker.setProps(props)` — shallow-merges into the existing bag, so
+   `setProps({ seats: 3 })` doesn't drop a `plan` key set earlier. Scoped to
+   that tracker instance only.
+3. **A one-off override**, via `pageview({ props })` on a manual call.
+
+`props` is entirely optional and omitted from the payload when empty.
+`tracker.reset()` restores the `data-props`/`config.props` defaults, dropping
+anything added later via `setProps()` — treat `setProps()` as per-session
+context, and `data-props`/`config.props` as static site-level defaults (env,
+app version, etc.) that should survive a reset.
+
+```html
+<script
+  src="https://cdn.opa.sh/sdk.js"
+  data-key="opa_pub_xxx"
+  data-props='{"env":"production"}'
+  async
+></script>
+
+<script>
+  window.opa.setProps({ plan: "pro" }); // e.g. once you know the visitor's plan
+  window.opa.pageview({ props: { step: "checkout" } }); // one-off override
+</script>
+```
+
+### Declarative click tracking (`data-opa-event`)
+
+A zero-JS alternative to calling `opa.track()` by hand. Tag any element:
+
+```html
+<a
+  href="https://wa.me/5511999999999"
+  data-opa-event="whatsapp_click"
+  data-opa-oferta="black-friday"
+  data-opa-plano="pro"
+>
+  Falar no WhatsApp
+</a>
+```
+
+A click anywhere inside that element fires
+`track("whatsapp_click", { oferta: "black-friday", plano: "pro" })` — it is
+**sugar over the existing `track()`**, the exact same conversion pipeline
+with the exact same requirements: a click id and a prior `identify()`. A tap
+on a tagged element before `identify()` has run (or with no click id) is a
+silent no-op, exactly like calling `track()` directly would be.
+
+Every `data-opa-*` attribute other than `data-opa-event` becomes a metadata
+key, kebab-case converted to camelCase the same way the DOM's own `.dataset`
+would: `data-opa-plano-anual="true"` → `{ planoAnual: "true" }`.
+
+One delegated listener on `document` (bubble phase, `closest("[data-opa-event]")`)
+handles it, so it works for elements added later or re-rendered by a SPA —
+no re-binding needed. On by default; disable with `data-track-clicks="false"`
+/ `trackClicks: false` (safe to leave on, since it only ever fires on
+elements you explicitly tag). Respects the same localhost/automation/opt-out
+exclusions as pageview autocapture.
+
 ### TypeScript
 
 The CDN bundle is plain JavaScript — it attaches `window.opa` at runtime and
@@ -111,8 +178,10 @@ type OpaGlobal = {
     host?: string;
     referrer?: string;
     title?: string;
+    props?: Record<string, unknown>;
   }) => Promise<void>;
   getVisitorId: () => string | null;
+  setProps: (props: Record<string, unknown>) => void;
 };
 
 declare global {
@@ -160,10 +229,13 @@ your public site key via the `x-opa-site-key` header (or in the JSON body when
 falling back to `navigator.sendBeacon` / `fetch` with `keepalive`). Every
 method is SSR-safe and never throws to the caller.
 
-`createTracker()` fires automatic pageview capture the same way the CDN
-bundle does (see [Automatic pageview capture](#automatic-pageview-capture)
-above) — pass `trackPageviews: false` to disable it, or `hashRouting: true` /
-`captureLocalhost: true` for the same knobs as the `data-*` attributes.
+`createTracker()` fires automatic pageview capture and `data-opa-event`
+click tracking the same way the CDN bundle does (see
+[Automatic pageview capture](#automatic-pageview-capture) and
+[Declarative click tracking](#declarative-click-tracking-data-opa-event)
+above) — `trackPageviews`, `hashRouting`, `captureLocalhost`, `props`, and
+`trackClicks` on `TrackerConfig` are the same knobs as the `data-*`
+attributes.
 
 ## `@opa.sh/analytics/react`
 

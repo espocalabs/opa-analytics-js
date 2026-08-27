@@ -129,6 +129,8 @@ describe("parseScriptConfig", () => {
 			trackPageviews: null,
 			hashRouting: null,
 			captureLocalhost: null,
+			props: null,
+			trackClicks: null,
 		};
 		expect(parseScriptConfig(attrs)).toEqual({});
 	});
@@ -153,6 +155,28 @@ describe("parseScriptConfig", () => {
 
 	test("an unrecognized boolean-flag value is ignored (falls through to the default)", () => {
 		expect(parseScriptConfig({ trackPageviews: "nope" })).toEqual({});
+	});
+
+	test("parses data-props JSON into the config's default props bag", () => {
+		const config = parseScriptConfig({
+			props: JSON.stringify({ plan: "pro", env: "prod" }),
+		});
+		expect(config.props).toEqual({ plan: "pro", env: "prod" });
+	});
+
+	test("tolerates malformed data-props JSON (no throw, field omitted)", () => {
+		expect(parseScriptConfig({ props: "{not json" })).toEqual({});
+	});
+
+	test("ignores a non-object data-props payload", () => {
+		expect(parseScriptConfig({ props: JSON.stringify([1, 2]) })).toEqual({});
+		expect(parseScriptConfig({ props: JSON.stringify("nope") })).toEqual({});
+	});
+
+	test("data-track-clicks=false disables declarative click tracking", () => {
+		expect(parseScriptConfig({ trackClicks: "false" })).toEqual({
+			trackClicks: false,
+		});
 	});
 });
 
@@ -185,6 +209,8 @@ describe("readScriptAttributes", () => {
 			trackPageviews: null,
 			hashRouting: null,
 			captureLocalhost: null,
+			props: null,
+			trackClicks: null,
 		});
 	});
 

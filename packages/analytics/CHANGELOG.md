@@ -1,0 +1,61 @@
+# Changelog
+
+All notable changes to `@opa.sh/analytics` are documented here. Format loosely
+follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [Unreleased] — 0.3.0
+
+### Added
+
+- **Automatic pageview autocapture.** Fires one pageview on initial load
+  (deferred until the tab is visible) and one more on every client-side SPA
+  navigation (`history.pushState` patch + `popstate`), feeding a new
+  `POST /v1/track/pageview` endpoint. Carries a PII-free anonymous visitor id
+  (`opa_vid`), a session id that rotates after 30min inactivity or a new UTM
+  campaign, device/locale metadata, and known UTM / ad-click ids (`gclid`,
+  `fbclid`, `ttclid`, `msclkid`, `gad_source`, `wbraid`, `gbraid`,
+  `kwai_click_id`, plus a long-tail bag). On by default; disable with
+  `trackPageviews: false` / `data-track-pageviews="false"`. Excludes
+  localhost/`127.0.0.1`/`file:`, headless automation, and an `opa_ignore`
+  opt-out flag by default.
+- `tracker.pageview(overrides?)` and `tracker.getVisitorId()` on the core
+  tracker, `window.opa.pageview()`/`window.opa.getVisitorId()` on the CDN
+  bundle, and `pageview`/`getVisitorId` on `useOpa()`'s client.
+- `@opa.sh/analytics/next` now ships a real Next.js App Router-aware
+  `<OpaAnalytics>` (`usePathname()` + `useSearchParams()`, Suspense-isolated)
+  as a reliability net for client-side route changes, alongside the core's
+  own `history.pushState` patch.
+- **Custom metadata (`props`) on pageviews.** `PageviewPayload`/
+  `PageviewOverrides` gained `props?: Record<string, unknown>` (server caps
+  it at 8KB). Set tracker-wide defaults via `TrackerConfig.props` /
+  `data-props` (JSON) at init, update them any time with
+  `tracker.setProps(props)` / `window.opa.setProps(props)` (shallow-merges,
+  instance-scoped), and/or pass a per-call override via
+  `pageview({ props })` — per-call keys win over the defaults. Every
+  pageview (manual and autocaptured) sends the merged bag; omitted entirely
+  when empty. `reset()` restores the config/`data-props` defaults, dropping
+  anything added via `setProps()`.
+- **Declarative click tracking (`data-opa-event`).** Zero-JS sugar over
+  `track()` — tag any element `data-opa-event="name"` plus any number of
+  `data-opa-*` attributes (kebab-case -> camelCase, e.g.
+  `data-opa-plano-anual` -> `planoAnual`) and a click anywhere inside it
+  fires `track(name, metadata)` through the exact same conversion pipeline,
+  with the exact same requirements: a `clickId` and a prior `identify()`.
+  One delegated bubble-phase `click` listener on `document` using
+  `closest("[data-opa-event]")`, so it works for elements added later /
+  SPA re-renders with no extra wiring. On by default (`trackClicks: true` /
+  `data-track-clicks`) since it only ever fires on elements explicitly
+  tagged for it; respects the same localhost/automation/opt-out exclusions
+  as pageview autocapture.
+
+### Notes
+
+- Mounting both `<OpaAnalytics>` and `<OpaProvider>` (react or next subpath)
+  in the same tree creates two independent tracker instances and
+  double-fires every pageview — use one or the other, not both. See the
+  README for the recommended pattern.
+
+## [0.2.0]
+
+Unified `@opa.sh/analytics` package with `/react` and `/next` subpaths;
+prior versions were split across separate packages.

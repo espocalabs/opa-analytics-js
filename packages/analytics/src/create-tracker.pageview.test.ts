@@ -578,3 +578,86 @@ describe("session id", () => {
 		expect(second).toBe(first);
 	});
 });
+
+describe("props (pageview metadata)", () => {
+	test("absent props are omitted from the payload entirely", async () => {
+		const tracker = createTracker({ key: SITE_KEY, trackPageviews: false });
+		await tracker.pageview();
+		const body = pageviewCalls()[0]?.body as Record<string, unknown>;
+		expect(body.props).toBeUndefined();
+	});
+
+	test("config.props flows onto a manual pageview", async () => {
+		const tracker = createTracker({
+			key: SITE_KEY,
+			trackPageviews: false,
+			props: { plan: "pro", env: "prod" },
+		});
+		await tracker.pageview();
+		const body = pageviewCalls()[0]?.body as Record<string, unknown>;
+		expect(body.props).toEqual({ plan: "pro", env: "prod" });
+	});
+
+	test("config.props flows onto an AUTOCAPTURED pageview (initial load)", async () => {
+		createTracker({ key: SITE_KEY, props: { plan: "pro" } });
+		await flush();
+		const body = pageviewCalls()[0]?.body as Record<string, unknown>;
+		expect(body.props).toEqual({ plan: "pro" });
+	});
+
+	test("setProps() merges into the default bag and flows onto the next pageview", async () => {
+		const tracker = createTracker({ key: SITE_KEY, trackPageviews: false });
+		tracker.setProps({ plan: "pro" });
+		tracker.setProps({ seats: 3 });
+		await tracker.pageview();
+		const body = pageviewCalls()[0]?.body as Record<string, unknown>;
+		expect(body.props).toEqual({ plan: "pro", seats: 3 });
+	});
+
+	test("setProps() flows onto a SUBSEQUENT autocaptured (SPA navigation) pageview", async () => {
+		const tracker = createTracker({ key: SITE_KEY });
+		await flush(); // initial pageview, no props set yet
+		tracker.setProps({ plan: "pro" });
+
+		browser.setPath("/pricing");
+		browser.pushState({}, "", "/pricing");
+		await flush(1100);
+
+		expect(pageviewCalls()).toHaveLength(2);
+		const body = pageviewCalls()[1]?.body as Record<string, unknown>;
+		expect(body.props).toEqual({ plan: "pro" });
+	});
+
+	test("a per-call pageview({ props }) override merges OVER the defaults, per key", async () => {
+		const tracker = createTracker({
+			key: SITE_KEY,
+			trackPageviews: false,
+			props: { plan: "pro", env: "prod" },
+		});
+		await tracker.pageview({ props: { plan: "enterprise", seats: 10 } });
+		const body = pageviewCalls()[0]?.body as Record<string, unknown>;
+		expect(body.props).toEqual({ plan: "enterprise", env: "prod", seats: 10 });
+	});
+
+	test("a later setProps() call does not overwrite unrelated keys", async () => {
+		const tracker = createTracker({ key: SITE_KEY, trackPageviews: false });
+		tracker.setProps({ plan: "pro" });
+		tracker.setProps({ env: "prod" });
+		await tracker.pageview();
+		const body = pageviewCalls()[0]?.body as Record<string, unknown>;
+		expect(body.props).toEqual({ plan: "pro", env: "prod" });
+	});
+
+	test("reset() restores the config-provided default props, dropping setProps() additions", async () => {
+		const tracker = createTracker({
+			key: SITE_KEY,
+			trackPageviews: false,
+			props: { app: "opa" },
+		});
+		tracker.setProps({ plan: "pro" });
+		tracker.reset();
+		await tracker.pageview();
+		const body = pageviewCalls()[0]?.body as Record<string, unknown>;
+		expect(body.props).toEqual({ app: "opa" });
+	});
+});

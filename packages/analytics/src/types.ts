@@ -24,6 +24,13 @@ export type TrackerConfig = {
 	hashRouting?: boolean;
 	/** Capture pageviews on `localhost`/`127.0.0.1`/`file:` pages too. Default `false`. */
 	captureLocalhost?: boolean;
+	/** Default `props` merged onto every pageview (manual + autocaptured).
+	 * Also settable/updatable at runtime via `tracker.setProps()`. */
+	props?: Record<string, unknown>;
+	/** Declarative `data-opa-event` click tracking (sugar over `track()`).
+	 * Default `true` — safe on by default since it only ever fires on
+	 * elements explicitly tagged with `data-opa-event`. */
+	trackClicks?: boolean;
 };
 
 export type IdentifyInput = {
@@ -94,12 +101,21 @@ export type PageviewPayload = {
 	gpc?: boolean;
 	consentState: ConsentMode;
 	ts: number;
+	/** Free-form metadata bag (server caps it at 8KB) — the default `props`
+	 * set via config/`data-props`/`setProps()`, merged with any per-call
+	 * `pageview({ props })` override. Omitted entirely when empty. */
+	props?: Record<string, unknown>;
 };
 
 /** Fields a caller may override on a manual `pageview()` call — everything
- * else (ids, device/locale, UTMs, consent) is always collected fresh. */
+ * else (ids, device/locale, UTMs, consent) is always collected fresh.
+ * `props` is MERGED over the tracker's default props (per-key override),
+ * not a replacement of them. */
 export type PageviewOverrides = Partial<
-	Pick<PageviewPayload, "url" | "pathname" | "host" | "referrer" | "title">
+	Pick<
+		PageviewPayload,
+		"url" | "pathname" | "host" | "referrer" | "title" | "props"
+	>
 >;
 
 export type Tracker = {
@@ -118,4 +134,9 @@ export type Tracker = {
 	/** The anonymous visitor id (`opa_vid`), generating and persisting one on
 	 * first access if consent allows. `null` outside a browser. */
 	getVisitorId: () => string | null;
+	/** Merges `props` into the default props bag sent with every subsequent
+	 * pageview (manual and autocaptured). Instance-scoped — does not affect
+	 * other tracker instances. `reset()` restores the config/`data-props`
+	 * defaults this tracker was created with. */
+	setProps: (props: Record<string, unknown>) => void;
 };
