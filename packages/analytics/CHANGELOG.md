@@ -3,6 +3,36 @@
 All notable changes to `@opa.sh/analytics` are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0]
+
+### Changed
+
+- **Anonymous-first identify and events.** `identify()` now sends
+  `POST /v1/track/identify` with `anonymousId`, `externalId`, optional
+  profile fields, optional traits, and optional `clickId`; it no longer emits
+  a lead/conversion event. `track()` now sends `POST /v1/track/event` with a
+  fresh `eventId`, the stable browser `anonymousId`, optional properties,
+  optional `clickId`, and the most recent in-memory `externalId` when one was
+  identified on the same tracker instance.
+- **Pre-identify event capture.** `track()` and declarative
+  `data-opa-event` clicks no longer require a prior `identify()` or click
+  attribution; anonymous events send as long as consent and opt-out gates allow
+  capture.
+- **Consent and opt-out gates are absolute.** `consent: "denied"`,
+  `setConsent(false)`, and `localStorage.opa_ignore = "true"` block manual
+  calls, autocapture, declarative events, outbound decoration, ID generation,
+  and transport. Denied/ignored states erase analytics cookies and getters
+  return `null`; granting consent again creates a fresh anonymous identity.
+
+### Added
+
+- `tracker.resetIdentity({ rotateAnonymous = true })` clears the stored
+  external id and session while preserving click attribution; by default it
+  also rotates `opa_vid`.
+- `tracker.resetAttribution()` clears only click attribution.
+- The new reset methods are exposed through the core tracker, React/Next
+  clients, and the browser `window.opa` surface.
+
 ## [0.3.1]
 
 ### Fixed
