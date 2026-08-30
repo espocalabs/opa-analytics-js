@@ -325,6 +325,22 @@ describe("initial pageview", () => {
 			console.warn = originalWarn;
 		}
 	});
+
+	test("setConsent(true) after denied initializes capture exactly once", async () => {
+		const tracker = createTracker({ key: SITE_KEY, consent: "denied" });
+		await flush();
+		expect(pageviewCalls()).toHaveLength(0);
+
+		tracker.setConsent(true);
+		await flush();
+		expect(pageviewCalls()).toHaveLength(1);
+		const first = pageviewCalls()[0]?.body as Record<string, unknown>;
+		expect(first.pathname).toBe("/landing");
+
+		tracker.setConsent(true);
+		await flush();
+		expect(pageviewCalls()).toHaveLength(1);
+	});
 });
 
 describe("SPA navigation autocapture", () => {
@@ -450,9 +466,15 @@ describe("exclusions", () => {
 	test("excludes visitors who set the opa_ignore opt-out flag", async () => {
 		installBrowser();
 		browser.storage.set("opa_ignore", "true");
+		browser.cookieJar.set("opa_vid", "old-vid");
+		browser.cookieJar.set("opa_sid", "old-session");
+		browser.cookieJar.set("opa_id", "old-click");
 		createTracker({ key: SITE_KEY });
 		await flush();
 		expect(pageviewCalls()).toHaveLength(0);
+		expect(browser.cookieJar.has("opa_vid")).toBe(false);
+		expect(browser.cookieJar.has("opa_sid")).toBe(false);
+		expect(browser.cookieJar.has("opa_id")).toBe(false);
 	});
 
 	test("a manual pageview() call also honors exclusions", async () => {
@@ -495,7 +517,7 @@ describe("public pageview() API", () => {
 		expect(body.title).toBe("Virtual Page");
 	});
 
-	test("reflects denied consent in consentState and does not persist the visitor id", async () => {
+	test("denied consent blocks manual pageview and does not create ids", async () => {
 		installBrowser({ href: "https://shop.example.com/landing" });
 		const tracker = createTracker({
 			key: SITE_KEY,
@@ -503,9 +525,9 @@ describe("public pageview() API", () => {
 			consent: "denied",
 		});
 		await tracker.pageview();
-		const body = pageviewCalls()[0]?.body as Record<string, unknown>;
-		expect(body.consentState).toBe("denied");
+		expect(pageviewCalls()).toHaveLength(0);
 		expect(browser.cookieJar.has("opa_vid")).toBe(false);
+		expect(tracker.getVisitorId()).toBeNull();
 	});
 
 	test("parses UTM params from the current URL", async () => {
@@ -535,25 +557,27 @@ describe("getVisitorId", () => {
 		expect(tracker.getVisitorId()).toBe("existing-vid");
 	});
 
-	test("keeps the visitor id in memory only (no cookie) when consent is denied", async () => {
+	test("returns null and does not create a visitor id when consent is denied", async () => {
 		const tracker = createTracker({
 			key: SITE_KEY,
 			trackPageviews: false,
 			consent: "denied",
 		});
 		const id = tracker.getVisitorId();
-		expect(id).toBeTruthy();
+		expect(id).toBeNull();
 		expect(browser.cookieJar.has("opa_vid")).toBe(false);
 	});
 
-	test("setConsent(true) persists a previously in-memory visitor id", async () => {
+	test("setConsent(true) after denied creates and persists a new visitor id", async () => {
 		const tracker = createTracker({
 			key: SITE_KEY,
 			trackPageviews: false,
 			consent: "denied",
 		});
-		const id = tracker.getVisitorId();
+		expect(tracker.getVisitorId()).toBeNull();
 		tracker.setConsent(true);
+		const id = tracker.getVisitorId();
+		expect(id).toBeTruthy();
 		expect(browser.cookieJar.get("opa_vid")).toBe(id ?? undefined);
 	});
 

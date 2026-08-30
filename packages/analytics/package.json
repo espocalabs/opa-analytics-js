@@ -1,6 +1,6 @@
 {
 	"name": "@opa.sh/analytics",
-	"version": "0.3.1",
+	"version": "0.4.0",
 	"description": "Opa browser analytics SDK — first-party click attribution, identify/track, automatic pageview capture, outbound link decoration. Vanilla JS core with /react and /next subpaths.",
 	"license": "MIT",
 	"keywords": [

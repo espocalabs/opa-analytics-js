@@ -13,8 +13,9 @@ import {
 } from "./outbound";
 import { createTransport, sendPageview } from "./transport";
 import type {
+	EventPayload,
 	IdentifyInput,
-	LeadPayload,
+	IdentifyPayload,
 	PageviewOverrides,
 	PageviewPayload,
 	Tracker,
@@ -26,7 +27,6 @@ const DEFAULT_API_HOST = "https://api.opa.sh";
 const DEFAULT_QUERY_PARAM = "opa_id";
 const DEFAULT_EXPIRES_IN_DAYS = 90;
 const DEFAULT_PATH = "/";
-const DEFAULT_IDENTIFY_EVENT = "identify";
 const VISITOR_COOKIE = "opa_vid";
 const SESSION_COOKIE = "opa_sid";
 /** Absorbs `pushState` + `popstate` firing in the same tick, and React
@@ -305,7 +305,6 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 	const queryParam = config.queryParam ?? DEFAULT_QUERY_PARAM;
 	const attributionModel = config.attributionModel ?? "last-click";
 	const outboundDomains = config.outboundDomains ?? [];
-	const identifyEventName = config.identifyEventName ?? DEFAULT_IDENTIFY_EVENT;
 	const cookieDomain = config.cookie?.domain;
 	const cookiePath = config.cookie?.path ?? DEFAULT_PATH;
 	const expiresInDays = config.cookie?.expiresInDays ?? DEFAULT_EXPIRES_IN_DAYS;
@@ -326,6 +325,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 	let currentExternalId: string | null = null;
 	let memoryVisitorId: string | null = null;
 	let memorySession: SessionState | null = null;
+	let optOutApplied = false;
 	let defaultProps: Record<string, unknown> = { ...initialProps };
 	let ready = false;
 	const readyQueue: Array<() => void> = [];
@@ -342,14 +342,50 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 		expiresInDays,
 	};
 
-	function persist(value: string): void {
+	function eraseAnalyticsCookies(): void {
+		eraseCookie(queryParam, { domain: cookieDomain, path: cookiePath });
+		eraseCookie(VISITOR_COOKIE, { domain: cookieDomain, path: cookiePath });
+		eraseCookie(SESSION_COOKIE, { domain: cookieDomain, path: cookiePath });
+		if (queryParam !== DEFAULT_QUERY_PARAM) {
+			eraseCookie(DEFAULT_QUERY_PARAM, {
+				domain: cookieDomain,
+				path: cookiePath,
+			});
+		}
+	}
+
+	function captureBlocked(): boolean {
 		if (!canPersist) {
+			return true;
+		}
+		if (!isOptedOut()) {
+			optOutApplied = false;
+			return false;
+		}
+		if (!optOutApplied) {
+			memoryClickId = null;
+			currentExternalId = null;
+			memoryVisitorId = null;
+			memorySession = null;
+			lastFiredPath = null;
+			transport.clear();
+			eraseAnalyticsCookies();
+			optOutApplied = true;
+		}
+		return true;
+	}
+
+	function persist(value: string): void {
+		if (captureBlocked()) {
 			return;
 		}
 		writeCookie(queryParam, value, cookieOptions);
 	}
 
 	function decorate(): void {
+		if (captureBlocked()) {
+			return;
+		}
 		const clickId = memoryClickId;
 		if (!clickId) {
 			return;
@@ -384,7 +420,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 
 	function resolveVisitorId(): string | null {
 		try {
-			if (typeof document === "undefined") {
+			if (typeof document === "undefined" || captureBlocked()) {
 				return null;
 			}
 			if (memoryVisitorId) {
@@ -429,7 +465,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 		const previous = memorySession ?? readStoredSession();
 		const next = resolveSession({ previous, now, utmSignature: signature });
 		memorySession = next;
-		if (canPersist) {
+		if (!captureBlocked()) {
 			writeCookie(SESSION_COOKIE, JSON.stringify(next), cookieOptions);
 		}
 		return next.sessionId;
@@ -514,7 +550,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 				missingSiteKey();
 				return;
 			}
-			if (isCaptureExcluded(captureLocalhost)) {
+			if (captureBlocked() || isCaptureExcluded(captureLocalhost)) {
 				return;
 			}
 			const payload = collectPageviewPayload(overrides);
@@ -529,14 +565,22 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 	}
 
 	function fireInitialPageview(): void {
-		if (!trackPageviews || isCaptureExcluded(captureLocalhost)) {
+		if (
+			!trackPageviews ||
+			captureBlocked() ||
+			isCaptureExcluded(captureLocalhost)
+		) {
 			return;
 		}
 		void pageview();
 	}
 
 	function scheduleAutoPageview(): void {
-		if (!trackPageviews || isCaptureExcluded(captureLocalhost)) {
+		if (
+			!trackPageviews ||
+			captureBlocked() ||
+			isCaptureExcluded(captureLocalhost)
+		) {
 			return;
 		}
 		const path = normalizedPathname();
@@ -614,7 +658,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 		eventClickBound = true;
 		document.addEventListener("click", (event) => {
 			try {
-				if (isCaptureExcluded(captureLocalhost)) {
+				if (captureBlocked() || isCaptureExcluded(captureLocalhost)) {
 					return;
 				}
 				const el = closestTaggedElement(event.target);
@@ -648,6 +692,16 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 	function init(): void {
 		try {
 			if (typeof document !== "undefined") {
+				if (isOptedOut() || !canPersist) {
+					eraseAnalyticsCookies();
+					memoryClickId = null;
+					memoryVisitorId = null;
+					memorySession = null;
+					currentExternalId = null;
+					optOutApplied = isOptedOut();
+					markReady();
+					return;
+				}
 				const fromUrl = readQueryParam(queryParam);
 				const existing = readCookie(queryParam);
 				const clickId =
@@ -675,28 +729,34 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 
 	function getClickId(): string | null {
 		try {
+			if (captureBlocked()) {
+				return null;
+			}
 			return memoryClickId ?? readCookie(queryParam);
 		} catch {
 			return null;
 		}
 	}
 
-	async function postLead(payload: LeadPayload | null): Promise<void> {
+	async function postIdentify(payload: IdentifyPayload | null): Promise<void> {
 		if (!payload) {
 			return;
 		}
 		try {
-			await transport.send(payload);
+			await transport.sendIdentify(payload);
 		} catch {
 			// Transport already swallows; belt-and-suspenders.
 		}
 	}
 
-	function missingClickId(method: string): void {
-		if (typeof document !== "undefined") {
-			warn(
-				`[opa] ${method}() skipped: no click id. The /v1/track/collect endpoint requires clickId.`,
-			);
+	async function postEvent(payload: EventPayload | null): Promise<void> {
+		if (!payload) {
+			return;
+		}
+		try {
+			await transport.sendEvent(payload);
+		} catch {
+			// Transport already swallows; belt-and-suspenders.
 		}
 	}
 
@@ -706,44 +766,34 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 		}
 	}
 
-	function missingIdentify(): void {
-		if (typeof document !== "undefined") {
-			warn("[opa] track() antes de identify() — sem customer pra atribuir");
-		}
-	}
-
 	async function identify(input: IdentifyInput): Promise<void> {
 		try {
 			if (!siteKey) {
 				missingSiteKey();
 				return;
 			}
-			currentExternalId = input.externalId;
-			const clickId = getClickId();
-			if (!clickId) {
-				missingClickId("identify");
+			if (captureBlocked()) {
 				return;
 			}
-			const { externalId, email, name, avatar, ...extra } = input;
-			const metadata = omitEmpty(extra);
-			const payload: LeadPayload = {
-				clickId,
-				eventName: identifyEventName,
-				customerExternalId: externalId,
+			const anonymousId = resolveVisitorId();
+			if (!anonymousId) {
+				return;
+			}
+			const clickId = getClickId();
+			currentExternalId = input.externalId;
+			const { externalId, ...extra } = input;
+			const traits = omitEmpty(extra);
+			const payload: IdentifyPayload = {
+				anonymousId,
+				externalId,
 			};
-			if (email !== undefined) {
-				payload.customerEmail = email;
+			if (clickId) {
+				payload.clickId = clickId;
 			}
-			if (name !== undefined) {
-				payload.customerName = name;
+			if (traits) {
+				payload.traits = traits;
 			}
-			if (avatar !== undefined) {
-				payload.customerAvatar = avatar;
-			}
-			if (metadata) {
-				payload.metadata = metadata;
-			}
-			await postLead(payload);
+			await postIdentify(payload);
 		} catch {
 			// Never throw to the caller.
 		}
@@ -758,25 +808,30 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 				missingSiteKey();
 				return;
 			}
+			if (captureBlocked()) {
+				return;
+			}
+			const anonymousId = resolveVisitorId();
+			if (!anonymousId) {
+				return;
+			}
 			const clickId = getClickId();
-			if (!clickId) {
-				missingClickId("track");
-				return;
-			}
-			if (!currentExternalId) {
-				missingIdentify();
-				return;
-			}
-			const payload: LeadPayload = {
-				clickId,
+			const payload: EventPayload = {
+				eventId: generateId(),
+				anonymousId,
 				eventName,
-				customerExternalId: currentExternalId,
 			};
-			const metadata = props ? omitEmpty(props) : undefined;
-			if (metadata) {
-				payload.metadata = metadata;
+			if (clickId) {
+				payload.clickId = clickId;
 			}
-			await postLead(payload);
+			if (currentExternalId) {
+				payload.externalId = currentExternalId;
+			}
+			const properties = props ? omitEmpty(props) : undefined;
+			if (properties) {
+				payload.properties = properties;
+			}
+			await postEvent(payload);
 		} catch {
 			// Never throw to the caller.
 		}
@@ -784,8 +839,16 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 
 	function setConsent(granted: boolean): void {
 		try {
+			const wasBlocked = !canPersist;
 			canPersist = granted;
 			if (granted) {
+				if (isOptedOut()) {
+					return;
+				}
+				if (wasBlocked) {
+					init();
+					return;
+				}
 				if (memoryClickId) {
 					persist(memoryClickId);
 				}
@@ -801,9 +864,12 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 				}
 				return;
 			}
-			eraseCookie(queryParam, { domain: cookieDomain, path: cookiePath });
-			eraseCookie(VISITOR_COOKIE, { domain: cookieDomain, path: cookiePath });
-			eraseCookie(SESSION_COOKIE, { domain: cookieDomain, path: cookiePath });
+			memoryClickId = null;
+			currentExternalId = null;
+			memoryVisitorId = null;
+			memorySession = null;
+			transport.clear();
+			eraseAnalyticsCookies();
 		} catch {
 			// Never throw to the caller.
 		}
@@ -819,9 +885,41 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 			// Restore the static config/`data-props` defaults, not an empty bag —
 			// per-user context set via setProps() is what should go stale here.
 			defaultProps = { ...initialProps };
-			eraseCookie(queryParam, { domain: cookieDomain, path: cookiePath });
-			eraseCookie(VISITOR_COOKIE, { domain: cookieDomain, path: cookiePath });
+			transport.clear();
+			eraseAnalyticsCookies();
+		} catch {
+			// Never throw to the caller.
+		}
+	}
+
+	function resetIdentity(options: { rotateAnonymous?: boolean } = {}): void {
+		try {
+			currentExternalId = null;
+			memorySession = null;
+			lastFiredPath = null;
 			eraseCookie(SESSION_COOKIE, { domain: cookieDomain, path: cookiePath });
+			if (options.rotateAnonymous ?? true) {
+				memoryVisitorId = null;
+				eraseCookie(VISITOR_COOKIE, {
+					domain: cookieDomain,
+					path: cookiePath,
+				});
+			}
+		} catch {
+			// Never throw to the caller.
+		}
+	}
+
+	function resetAttribution(): void {
+		try {
+			memoryClickId = null;
+			eraseCookie(queryParam, { domain: cookieDomain, path: cookiePath });
+			if (queryParam !== DEFAULT_QUERY_PARAM) {
+				eraseCookie(DEFAULT_QUERY_PARAM, {
+					domain: cookieDomain,
+					path: cookiePath,
+				});
+			}
 		} catch {
 			// Never throw to the caller.
 		}
@@ -847,6 +945,8 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 		getClickId,
 		setConsent,
 		reset,
+		resetIdentity,
+		resetAttribution,
 		ready: onReady,
 		init,
 		pageview,

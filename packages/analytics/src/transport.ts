@@ -1,6 +1,8 @@
-import type { LeadPayload, PageviewPayload } from "./types";
+import type { EventPayload, IdentifyPayload, PageviewPayload } from "./types";
 
 const COLLECT_PATH = "/v1/track/collect";
+const IDENTIFY_PATH = "/v1/track/identify";
+const EVENT_PATH = "/v1/track/event";
 const PAGEVIEW_PATH = "/v1/track/pageview";
 const SITE_KEY_HEADER = "x-opa-site-key";
 
@@ -10,6 +12,14 @@ function trimTrailingSlash(host: string): string {
 
 export function collectEndpoint(apiHost: string): string {
 	return `${trimTrailingSlash(apiHost)}${COLLECT_PATH}`;
+}
+
+export function identifyEndpoint(apiHost: string): string {
+	return `${trimTrailingSlash(apiHost)}${IDENTIFY_PATH}`;
+}
+
+export function eventEndpoint(apiHost: string): string {
+	return `${trimTrailingSlash(apiHost)}${EVENT_PATH}`;
 }
 
 export function pageviewEndpoint(apiHost: string): string {
@@ -176,18 +186,21 @@ async function fetchWithRetry(
 }
 
 export type Transport = {
-	send: (payload: LeadPayload) => Promise<void>;
+	sendIdentify: (payload: IdentifyPayload) => Promise<void>;
+	sendEvent: (payload: EventPayload) => Promise<void>;
+	clear: () => void;
 	bindUnload: () => void;
 };
 
 export function createTransport(apiHost: string, key?: string): Transport {
-	const url = collectEndpoint(apiHost);
+	const identifyUrl = identifyEndpoint(apiHost);
+	const eventUrl = eventEndpoint(apiHost);
 	const headers = requestHeaders(key);
-	const inFlight = new Set<string>();
+	const inFlight = new Map<string, string>();
 	let unloadBound = false;
 
 	function flushInFlight(): void {
-		for (const body of inFlight) {
+		for (const [body, url] of inFlight) {
 			if (key && typeof fetch === "function") {
 				try {
 					void fetch(url, {
@@ -208,6 +221,10 @@ export function createTransport(apiHost: string, key?: string): Transport {
 		}
 	}
 
+	function clear(): void {
+		inFlight.clear();
+	}
+
 	function onHidden(): void {
 		flushInFlight();
 	}
@@ -218,14 +235,17 @@ export function createTransport(apiHost: string, key?: string): Transport {
 		}
 	}
 
-	async function send(payload: LeadPayload): Promise<void> {
+	async function sendTo(
+		url: string,
+		payload: IdentifyPayload | EventPayload,
+	): Promise<void> {
 		let body: string;
 		try {
 			body = JSON.stringify(payload);
 		} catch {
 			return;
 		}
-		inFlight.add(body);
+		inFlight.set(body, url);
 		try {
 			if (isDocumentHidden()) {
 				if (key && typeof fetch === "function") {
@@ -248,6 +268,14 @@ export function createTransport(apiHost: string, key?: string): Transport {
 		}
 	}
 
+	async function sendIdentify(payload: IdentifyPayload): Promise<void> {
+		await sendTo(identifyUrl, payload);
+	}
+
+	async function sendEvent(payload: EventPayload): Promise<void> {
+		await sendTo(eventUrl, payload);
+	}
+
 	function bindUnload(): void {
 		if (unloadBound) {
 			return;
@@ -265,5 +293,5 @@ export function createTransport(apiHost: string, key?: string): Transport {
 		}
 	}
 
-	return { send, bindUnload };
+	return { sendIdentify, sendEvent, clear, bindUnload };
 }

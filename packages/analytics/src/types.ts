@@ -17,6 +17,7 @@ export type TrackerConfig = {
 	outboundDomains?: string[];
 	consent?: ConsentMode;
 	queryParam?: string;
+	/** @deprecated `identify()` no longer emits an event; this option is a no-op. */
 	identifyEventName?: string;
 	/** Automatic pageview capture (initial load + SPA navigation). Default `true`. */
 	trackPageviews?: boolean;
@@ -51,6 +52,22 @@ export type LeadPayload = {
 	customerName?: string;
 	customerAvatar?: string;
 	metadata?: Record<string, unknown>;
+};
+
+export type IdentifyPayload = {
+	anonymousId: string;
+	externalId: string;
+	clickId?: string;
+	traits?: Record<string, unknown>;
+};
+
+export type EventPayload = {
+	eventId: string;
+	anonymousId: string;
+	eventName: string;
+	clickId?: string;
+	externalId?: string;
+	properties?: Record<string, unknown>;
 };
 
 /**
@@ -124,6 +141,8 @@ export type Tracker = {
 	getClickId: () => string | null;
 	setConsent: (granted: boolean) => void;
 	reset: () => void;
+	resetIdentity: (options?: { rotateAnonymous?: boolean }) => void;
+	resetAttribution: () => void;
 	ready: (cb: () => void) => void;
 	init: () => void;
 	/** Sends one pageview now. Autocapture calls this internally on initial
