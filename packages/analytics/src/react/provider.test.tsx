@@ -11,6 +11,8 @@ function fakeTracker(): Tracker {
 		getClickId: mock(() => null),
 		setConsent: mock(() => {}),
 		reset: mock(() => {}),
+		resetIdentity: mock(() => {}),
+		resetAttribution: mock(() => {}),
 		ready: mock(() => {}),
 		init: mock(() => {}),
 		pageview: mock(async () => {}),
@@ -24,7 +26,7 @@ describe("OpaProvider + useOpa", () => {
 		cleanup();
 	});
 
-	test("useOpa() returns identify, track, getClickId, setConsent, and reset from the tracker", () => {
+	test("useOpa() returns the public tracker methods from the tracker", () => {
 		const tracker = fakeTracker();
 		const createTracker = mock((_config?: TrackerConfig) => tracker);
 
@@ -39,6 +41,8 @@ describe("OpaProvider + useOpa", () => {
 		expect(result.current.getClickId).toBe(tracker.getClickId);
 		expect(result.current.setConsent).toBe(tracker.setConsent);
 		expect(result.current.reset).toBe(tracker.reset);
+		expect(result.current.resetIdentity).toBe(tracker.resetIdentity);
+		expect(result.current.resetAttribution).toBe(tracker.resetAttribution);
 	});
 
 	test("useOpa() throws when used outside of an <OpaProvider>", () => {

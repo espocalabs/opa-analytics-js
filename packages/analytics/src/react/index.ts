@@ -3,7 +3,9 @@
 export type {
 	AttributionModel,
 	ConsentMode,
+	EventPayload,
 	IdentifyInput,
+	IdentifyPayload,
 	PageviewOverrides,
 	PageviewPayload,
 	Tracker,

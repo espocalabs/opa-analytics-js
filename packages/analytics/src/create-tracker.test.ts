@@ -382,36 +382,88 @@ describe("createTracker init / cookie capture", () => {
 });
 
 describe("consent mode", () => {
-	test("consent 'denied' keeps the click id in memory and does not write a cookie", () => {
+	test("consent 'denied' blocks ids and does not write cookies", async () => {
 		installBrowser({ href: "https://shop.example.com/?opa_id=pending" });
-		const tracker = createTracker({ consent: "denied" });
-		expect(tracker.getClickId()).toBe("pending");
+		const tracker = createTracker({ key: SITE_KEY, consent: "denied" });
+		expect(tracker.getClickId()).toBeNull();
+		expect(tracker.getVisitorId()).toBeNull();
 		expect(cookieValue("opa_id")).toBeNull();
-		expect(browser.cookieWrites).toHaveLength(0);
+		expect(cookieValue("opa_vid")).toBeNull();
+		expect(browser.cookieWrites).toHaveLength(3);
+		expect(
+			browser.cookieWrites.every((write) => write.includes("Max-Age=0")),
+		).toBe(true);
+		await tracker.identify({ externalId: "cus_1" });
+		await tracker.track("Signup");
+		expect(browser.fetchCalls).toHaveLength(0);
 	});
 
-	test("setConsent(true) persists the pending in-memory click id", () => {
+	test("setConsent(true) allows a fresh anonymous id but does not restore blocked attribution", () => {
 		installBrowser({ href: "https://shop.example.com/?opa_id=pending" });
 		const tracker = createTracker({ consent: "denied" });
+		expect(tracker.getClickId()).toBeNull();
 		tracker.setConsent(true);
-		expect(cookieValue("opa_id")).toBe("pending");
-		expect(browser.cookieWrites.length).toBeGreaterThan(0);
+		const visitorId = tracker.getVisitorId();
+		expect(visitorId).toBeTruthy();
+		expect(cookieValue("opa_vid")).toBe(visitorId);
+		expect(tracker.getClickId()).toBeNull();
+		expect(cookieValue("opa_id")).toBeNull();
 	});
 
-	test("setConsent(false) erases the cookie but getClickId still reads memory", () => {
+	test("setConsent(false) erases analytics cookies and blocks manual calls/getters", async () => {
 		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
-		const tracker = createTracker();
+		const tracker = createTracker({ key: SITE_KEY });
+		const visitorId = tracker.getVisitorId();
 		expect(cookieValue("opa_id")).toBe("click_abc");
+		expect(cookieValue("opa_vid")).toBe(visitorId);
 		tracker.setConsent(false);
 		expect(cookieValue("opa_id")).toBeNull();
-		expect(tracker.getClickId()).toBe("click_abc");
+		expect(cookieValue("opa_vid")).toBeNull();
+		expect(cookieValue("opa_sid")).toBeNull();
+		expect(tracker.getClickId()).toBeNull();
+		expect(tracker.getVisitorId()).toBeNull();
+		await tracker.identify({ externalId: "cus_1" });
+		await tracker.track("Signup");
+		expect(browser.fetchCalls).toHaveLength(0);
+	});
+});
+
+describe("opa_ignore opt-out", () => {
+	test("is an absolute kill switch for init, manual calls, getters, and decoration", async () => {
+		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
+		browser.storage.set("opa_ignore", "true");
+		browser.cookieJar.set("opa_id", "stored-click");
+		browser.cookieJar.set("opa_vid", "stored-visitor");
+		browser.cookieJar.set("opa_sid", "stored-session");
+		const outbound: FakeAnchor = {
+			href: "https://checkout.example.com/pay",
+			closest(selector) {
+				return selector.startsWith("a") ? outbound : null;
+			},
+		};
+		browser.anchors.push(outbound);
+		const tracker = createTracker({
+			key: SITE_KEY,
+			outboundDomains: ["checkout.example.com"],
+		});
+		expect(tracker.getClickId()).toBeNull();
+		expect(tracker.getVisitorId()).toBeNull();
+		await tracker.identify({ externalId: "cus_1" });
+		await tracker.track("Signup");
+		browser.dispatchDocument("click", outbound);
+		expect(browser.fetchCalls).toHaveLength(0);
+		expect(outbound.href).toBe("https://checkout.example.com/pay");
+		expect(cookieValue("opa_id")).toBeNull();
+		expect(cookieValue("opa_vid")).toBeNull();
+		expect(cookieValue("opa_sid")).toBeNull();
 	});
 });
 
 describe("identify and track", () => {
-	test("identify POSTs the exact payload to /v1/track/collect with the site-key header", async () => {
+	test("identify POSTs the exact payload to /v1/track/identify with the site-key header", async () => {
 		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
 		const tracker = createTracker({ key: SITE_KEY });
+		const anonymousId = tracker.getVisitorId();
 		await tracker.identify({
 			externalId: "cus_1",
 			email: "ada@example.com",
@@ -421,59 +473,63 @@ describe("identify and track", () => {
 		});
 		expect(browser.fetchCalls).toHaveLength(1);
 		const call = browser.fetchCalls[0];
-		expect(call?.url).toBe("https://api.opa.sh/v1/track/collect");
+		expect(call?.url).toBe("https://api.opa.sh/v1/track/identify");
 		expect(call?.init.method).toBe("POST");
 		expect(call?.init.headers).toEqual({
 			"content-type": "application/json",
 			"x-opa-site-key": SITE_KEY,
 		});
 		expect(call?.body).toEqual({
+			anonymousId,
+			externalId: "cus_1",
 			clickId: "click_abc",
-			eventName: "identify",
-			customerExternalId: "cus_1",
-			customerEmail: "ada@example.com",
-			customerName: "Ada",
-			customerAvatar: "https://cdn.example.com/ada.png",
-			metadata: { plan: "pro" },
+			email: "ada@example.com",
+			name: "Ada",
+			avatar: "https://cdn.example.com/ada.png",
+			traits: { plan: "pro" },
 		});
 	});
 
-	test("identify uses identifyEventName and a custom apiHost", async () => {
-		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
+	test("identify accepts a custom apiHost and does not require click attribution", async () => {
+		installBrowser({ href: "https://shop.example.com/" });
 		const tracker = createTracker({
 			key: SITE_KEY,
 			apiHost: "https://api.example.test/",
-			identifyEventName: "Signup",
 		});
+		const anonymousId = tracker.getVisitorId();
 		await tracker.identify({ externalId: "cus_1" });
 		expect(browser.fetchCalls[0]?.url).toBe(
-			"https://api.example.test/v1/track/collect",
+			"https://api.example.test/v1/track/identify",
 		);
 		expect(browser.fetchCalls[0]?.body).toEqual({
-			clickId: "click_abc",
-			eventName: "Signup",
-			customerExternalId: "cus_1",
+			anonymousId,
+			externalId: "cus_1",
 		});
 	});
 
 	test("track uses the externalId from the last identify", async () => {
 		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
 		const tracker = createTracker({ key: SITE_KEY });
+		const anonymousId = tracker.getVisitorId();
 		await tracker.identify({ externalId: "cus_1" });
 		await tracker.track("Trial started", { plan: "start", seats: 3 });
 		expect(browser.fetchCalls).toHaveLength(2);
 		expect(browser.fetchCalls[1]?.url).toBe(
-			"https://api.opa.sh/v1/track/collect",
+			"https://api.opa.sh/v1/track/event",
 		);
 		expect(browser.fetchCalls[1]?.init.headers).toEqual({
 			"content-type": "application/json",
 			"x-opa-site-key": SITE_KEY,
 		});
-		expect(browser.fetchCalls[1]?.body).toEqual({
+		const body = browser.fetchCalls[1]?.body as Record<string, unknown>;
+		expect(body.eventId).toEqual(expect.any(String));
+		expect(body).toEqual({
+			eventId: body.eventId,
+			anonymousId,
 			clickId: "click_abc",
 			eventName: "Trial started",
-			customerExternalId: "cus_1",
-			metadata: { plan: "start", seats: 3 },
+			externalId: "cus_1",
+			properties: { plan: "start", seats: 3 },
 		});
 	});
 
@@ -483,29 +539,28 @@ describe("identify and track", () => {
 		await tracker.identify({ externalId: "cus_1" });
 		await tracker.identify({ externalId: "cus_2" });
 		await tracker.track("Purchase");
-		expect(browser.fetchCalls[2]?.body).toEqual({
-			clickId: "click_abc",
-			eventName: "Purchase",
-			customerExternalId: "cus_2",
-		});
+		const body = browser.fetchCalls[2]?.body as Record<string, unknown>;
+		expect(body.externalId).toBe("cus_2");
+		expect(body.eventName).toBe("Purchase");
 	});
 
-	test("track before identify is a no-op and warns in dev", async () => {
-		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
-		const warnings: unknown[][] = [];
-		const originalWarn = console.warn;
-		console.warn = (...args: unknown[]) => {
-			warnings.push(args);
-		};
-		try {
-			const tracker = createTracker({ key: SITE_KEY });
-			await tracker.track("Signup");
-			expect(browser.fetchCalls).toHaveLength(0);
-			expect(warnings.length).toBeGreaterThan(0);
-			expect(String(warnings[0]?.[0])).toContain("track() antes de identify()");
-		} finally {
-			console.warn = originalWarn;
-		}
+	test("track before identify and before click attribution still sends an anonymous event", async () => {
+		installBrowser({ href: "https://shop.example.com/" });
+		const tracker = createTracker({ key: SITE_KEY });
+		const anonymousId = tracker.getVisitorId();
+		await tracker.track("Signup", { plan: "free" });
+		expect(browser.fetchCalls).toHaveLength(1);
+		const body = browser.fetchCalls[0]?.body as Record<string, unknown>;
+		expect(browser.fetchCalls[0]?.url).toBe(
+			"https://api.opa.sh/v1/track/event",
+		);
+		expect(body.eventId).toEqual(expect.any(String));
+		expect(body).toEqual({
+			eventId: body.eventId,
+			anonymousId,
+			eventName: "Signup",
+			properties: { plan: "free" },
+		});
 	});
 
 	test("identify and track without a site-key are no-ops and warn in dev", async () => {
@@ -541,32 +596,16 @@ describe("identify and track", () => {
 		}
 	});
 
-	test("identify without a click id is a no-op and warns in dev", async () => {
-		installBrowser({ href: "https://shop.example.com/" });
-		const warnings: unknown[][] = [];
-		const originalWarn = console.warn;
-		console.warn = (...args: unknown[]) => {
-			warnings.push(args);
-		};
-		try {
-			const tracker = createTracker({ key: SITE_KEY });
-			await tracker.identify({ externalId: "cus_1" });
-			expect(browser.fetchCalls).toHaveLength(0);
-			expect(warnings.length).toBeGreaterThan(0);
-			expect(String(warnings[0]?.[0])).toContain("click id");
-		} finally {
-			console.warn = originalWarn;
-		}
-	});
-
-	test("track without a click id is a no-op and does not throw", async () => {
+	test("track without a click id sends and does not throw", async () => {
 		installBrowser({ href: "https://shop.example.com/" });
 		const originalWarn = console.warn;
 		console.warn = () => {};
 		try {
 			const tracker = createTracker({ key: SITE_KEY });
 			await expect(tracker.track("Signup")).resolves.toBeUndefined();
-			expect(browser.fetchCalls).toHaveLength(0);
+			expect(browser.fetchCalls).toHaveLength(1);
+			const body = browser.fetchCalls[0]?.body as Record<string, unknown>;
+			expect(body.clickId).toBeUndefined();
 		} finally {
 			console.warn = originalWarn;
 		}
@@ -601,47 +640,60 @@ describe("identify and track", () => {
 });
 
 describe("reset, ready, outbound, unload", () => {
-	test("reset clears the cookie and in-memory click id", async () => {
+	test("reset clears attribution, anonymous identity, session, and external id", async () => {
 		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
 		const tracker = createTracker({ key: SITE_KEY });
+		const firstAnonymousId = tracker.getVisitorId();
 		expect(tracker.getClickId()).toBe("click_abc");
+		await tracker.identify({ externalId: "cus_1" });
 		tracker.reset();
 		expect(tracker.getClickId()).toBeNull();
 		expect(cookieValue("opa_id")).toBeNull();
-		const originalWarn = console.warn;
-		console.warn = () => {};
-		try {
-			await tracker.track("Signup");
-		} finally {
-			console.warn = originalWarn;
-		}
-		expect(browser.fetchCalls).toHaveLength(0);
+		expect(cookieValue("opa_vid")).toBeNull();
+		expect(cookieValue("opa_sid")).toBeNull();
+		await tracker.track("Signup");
+		const eventBody = browser.fetchCalls[1]?.body as Record<string, unknown>;
+		expect(eventBody.externalId).toBeUndefined();
+		expect(eventBody.clickId).toBeUndefined();
+		expect(eventBody.anonymousId).not.toBe(firstAnonymousId);
 	});
 
-	test("reset also clears the stored externalId", async () => {
+	test("resetIdentity rotates anonymous identity without clearing click attribution", async () => {
 		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
-		const warnings: unknown[][] = [];
-		const originalWarn = console.warn;
-		console.warn = (...args: unknown[]) => {
-			warnings.push(args);
-		};
-		try {
-			const tracker = createTracker({ key: SITE_KEY });
-			await tracker.identify({ externalId: "cus_1" });
-			expect(browser.fetchCalls).toHaveLength(1);
-			tracker.reset();
-			tracker.init();
-			expect(tracker.getClickId()).toBe("click_abc");
-			await tracker.track("Signup");
-			expect(browser.fetchCalls).toHaveLength(1);
-			expect(
-				warnings.some((args) =>
-					String(args[0]).includes("track() antes de identify()"),
-				),
-			).toBe(true);
-		} finally {
-			console.warn = originalWarn;
-		}
+		const tracker = createTracker({ key: SITE_KEY });
+		const first = tracker.getVisitorId();
+		tracker.resetIdentity();
+		const second = tracker.getVisitorId();
+		expect(second).not.toBe(first);
+		expect(tracker.getClickId()).toBe("click_abc");
+		expect(cookieValue("opa_id")).toBe("click_abc");
+		expect(cookieValue("opa_vid")).toBe(second);
+	});
+
+	test("resetIdentity can clear stored external id without rotating anonymous identity", async () => {
+		const tracker = createTracker({ key: SITE_KEY });
+		const anonymousId = tracker.getVisitorId();
+		await tracker.identify({ externalId: "cus_1" });
+		tracker.resetIdentity({ rotateAnonymous: false });
+		await tracker.track("Signup");
+		const body = browser.fetchCalls[1]?.body as Record<string, unknown>;
+		expect(body.anonymousId).toBe(anonymousId);
+		expect(body.externalId).toBeUndefined();
+	});
+
+	test("resetAttribution clears only click attribution", async () => {
+		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
+		const tracker = createTracker({ key: SITE_KEY });
+		const anonymousId = tracker.getVisitorId();
+		await tracker.identify({ externalId: "cus_1" });
+		tracker.resetAttribution();
+		expect(tracker.getClickId()).toBeNull();
+		expect(cookieValue("opa_id")).toBeNull();
+		await tracker.track("Signup");
+		const body = browser.fetchCalls[1]?.body as Record<string, unknown>;
+		expect(body.anonymousId).toBe(anonymousId);
+		expect(body.externalId).toBe("cus_1");
+		expect(body.clickId).toBeUndefined();
 	});
 
 	test("ready fires after init (synchronously when document is present)", () => {
@@ -708,16 +760,18 @@ describe("reset, ready, outbound, unload", () => {
 		const flush = calls.filter((call) => call.init.keepalive === true);
 		expect(flush.length).toBeGreaterThan(0);
 		const last = flush[flush.length - 1];
-		expect(last?.url).toBe("https://api.opa.sh/v1/track/collect");
+		expect(last?.url).toBe("https://api.opa.sh/v1/track/event");
 		expect(last?.init.headers).toEqual({
 			"content-type": "application/json",
 			"x-opa-site-key": SITE_KEY,
 		});
 		expect(JSON.parse(String(last?.init.body))).toEqual({
+			eventId: expect.any(String),
+			anonymousId: expect.any(String),
 			clickId: "click_abc",
 			eventName: "Signup",
-			customerExternalId: "cus_1",
-			metadata: { source: "cta" },
+			externalId: "cus_1",
+			properties: { source: "cta" },
 		});
 	});
 
@@ -729,7 +783,7 @@ describe("reset, ready, outbound, unload", () => {
 		expect(browser.beaconCalls).toHaveLength(0);
 		expect(browser.fetchCalls).toHaveLength(1);
 		expect(browser.fetchCalls[0]?.url).toBe(
-			"https://api.opa.sh/v1/track/collect",
+			"https://api.opa.sh/v1/track/identify",
 		);
 		expect(browser.fetchCalls[0]?.init.keepalive).toBe(true);
 		expect(browser.fetchCalls[0]?.init.headers).toEqual({
@@ -737,9 +791,9 @@ describe("reset, ready, outbound, unload", () => {
 			"x-opa-site-key": SITE_KEY,
 		});
 		expect(browser.fetchCalls[0]?.body).toEqual({
+			anonymousId: expect.any(String),
 			clickId: "click_abc",
-			eventName: "identify",
-			customerExternalId: "cus_1",
+			externalId: "cus_1",
 		});
 	});
 });

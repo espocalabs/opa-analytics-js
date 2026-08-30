@@ -250,8 +250,12 @@ afterEach(() => {
 	uninstallBrowser();
 });
 
-function collectCalls() {
-	return browser.fetchCalls.filter((c) => c.url.includes("/v1/track/collect"));
+function eventCalls() {
+	return browser.fetchCalls.filter((c) => c.url.includes("/v1/track/event"));
+}
+
+function identifyCalls() {
+	return browser.fetchCalls.filter((c) => c.url.includes("/v1/track/identify"));
 }
 
 async function flush(): Promise<void> {
@@ -283,11 +287,12 @@ describe("data-opa-event declarative click tracking", () => {
 		browser.click(el);
 		await flush();
 
-		const calls = collectCalls();
-		expect(calls).toHaveLength(2); // identify + the tracked click
-		const body = calls[1]?.body as Record<string, unknown>;
+		expect(identifyCalls()).toHaveLength(1);
+		const calls = eventCalls();
+		expect(calls).toHaveLength(1);
+		const body = calls[0]?.body as Record<string, unknown>;
 		expect(body.eventName).toBe("whatsapp_click");
-		expect(body.metadata).toEqual({ oferta: "black-friday", plano: "pro" });
+		expect(body.properties).toEqual({ oferta: "black-friday", plano: "pro" });
 	});
 
 	test("a click on a CHILD of a tagged element still fires (bubbles up via closest())", async () => {
@@ -300,11 +305,12 @@ describe("data-opa-event declarative click tracking", () => {
 		browser.click(child);
 		await flush();
 
-		const calls = collectCalls();
-		expect(calls).toHaveLength(2);
-		const body = calls[1]?.body as Record<string, unknown>;
+		expect(identifyCalls()).toHaveLength(1);
+		const calls = eventCalls();
+		expect(calls).toHaveLength(1);
+		const body = calls[0]?.body as Record<string, unknown>;
 		expect(body.eventName).toBe("cta_click");
-		expect(body.metadata).toEqual({ oferta: "spring" });
+		expect(body.properties).toEqual({ oferta: "spring" });
 	});
 
 	test("a click on an untagged element fires nothing", async () => {
@@ -313,7 +319,8 @@ describe("data-opa-event declarative click tracking", () => {
 		browser.click(el);
 		await flush();
 
-		expect(collectCalls()).toHaveLength(1); // just the identify() from setup
+		expect(identifyCalls()).toHaveLength(1);
+		expect(eventCalls()).toHaveLength(0);
 	});
 
 	test("kebab-case data-opa-* attributes camelCase into metadata keys", async () => {
@@ -326,8 +333,8 @@ describe("data-opa-event declarative click tracking", () => {
 		browser.click(el);
 		await flush();
 
-		const body = collectCalls()[1]?.body as Record<string, unknown>;
-		expect(body.metadata).toEqual({
+		const body = eventCalls()[0]?.body as Record<string, unknown>;
+		expect(body.properties).toEqual({
 			planoAnual: "true",
 			utmSourceOverride: "partner",
 		});
@@ -347,7 +354,8 @@ describe("data-opa-event declarative click tracking", () => {
 		browser.click(el);
 		await flush();
 
-		expect(collectCalls()).toHaveLength(1); // only the identify()
+		expect(identifyCalls()).toHaveLength(1);
+		expect(eventCalls()).toHaveLength(0);
 	});
 
 	test("data-track-clicks is on by default (no config needed)", async () => {
@@ -355,39 +363,33 @@ describe("data-opa-event declarative click tracking", () => {
 		const el = new FakeElement({ "data-opa-event": "default_on_click" });
 		browser.click(el);
 		await flush();
-		expect(collectCalls()).toHaveLength(2);
+		expect(identifyCalls()).toHaveLength(1);
+		expect(eventCalls()).toHaveLength(1);
 	});
 
-	test("is sugar over track(): a click with NO prior identify() is a silent no-op", async () => {
+	test("is sugar over track(): a click with NO prior identify() still sends an anonymous event", async () => {
 		installBrowser({
 			href: "https://shop.example.com/pricing?opa_id=click_abc",
 		});
-		const originalWarn = console.warn;
-		console.warn = () => {};
-		try {
-			createTracker({ key: SITE_KEY, trackPageviews: false });
-			const el = new FakeElement({ "data-opa-event": "whatsapp_click" });
-			browser.click(el);
-			await flush();
-			expect(collectCalls()).toHaveLength(0);
-		} finally {
-			console.warn = originalWarn;
-		}
+		createTracker({ key: SITE_KEY, trackPageviews: false });
+		const el = new FakeElement({ "data-opa-event": "whatsapp_click" });
+		browser.click(el);
+		await flush();
+		const calls = eventCalls();
+		expect(calls).toHaveLength(1);
+		const body = calls[0]?.body as Record<string, unknown>;
+		expect(body.eventName).toBe("whatsapp_click");
+		expect(body.externalId).toBeUndefined();
 	});
 
-	test("is sugar over track(): a click with no click id is a silent no-op", async () => {
+	test("is sugar over track(): a click with no click id still sends", async () => {
 		installBrowser({ href: "https://shop.example.com/pricing" }); // no opa_id
-		const originalWarn = console.warn;
-		console.warn = () => {};
-		try {
-			createTracker({ key: SITE_KEY, trackPageviews: false });
-			const el = new FakeElement({ "data-opa-event": "whatsapp_click" });
-			browser.click(el);
-			await flush();
-			expect(collectCalls()).toHaveLength(0);
-		} finally {
-			console.warn = originalWarn;
-		}
+		createTracker({ key: SITE_KEY, trackPageviews: false });
+		const el = new FakeElement({ "data-opa-event": "whatsapp_click" });
+		browser.click(el);
+		await flush();
+		const body = eventCalls()[0]?.body as Record<string, unknown>;
+		expect(body.clickId).toBeUndefined();
 	});
 
 	test("respects the same exclusions as pageview autocapture (e.g. navigator.webdriver)", async () => {
@@ -401,7 +403,39 @@ describe("data-opa-event declarative click tracking", () => {
 		browser.click(el);
 		await flush();
 
-		expect(collectCalls()).toHaveLength(1); // only the identify()
+		expect(identifyCalls()).toHaveLength(1);
+		expect(eventCalls()).toHaveLength(0);
+	});
+
+	test("does not track declarative clicks when consent is denied", async () => {
+		installBrowser({
+			href: "https://shop.example.com/pricing?opa_id=click_abc",
+		});
+		createTracker({
+			key: SITE_KEY,
+			trackPageviews: false,
+			consent: "denied",
+		});
+		const el = new FakeElement({ "data-opa-event": "whatsapp_click" });
+		browser.click(el);
+		await flush();
+
+		expect(identifyCalls()).toHaveLength(0);
+		expect(eventCalls()).toHaveLength(0);
+	});
+
+	test("does not track declarative clicks when opa_ignore is set", async () => {
+		installBrowser({
+			href: "https://shop.example.com/pricing?opa_id=click_abc",
+		});
+		window.localStorage.setItem("opa_ignore", "true");
+		createTracker({ key: SITE_KEY, trackPageviews: false });
+		const el = new FakeElement({ "data-opa-event": "whatsapp_click" });
+		browser.click(el);
+		await flush();
+
+		expect(identifyCalls()).toHaveLength(0);
+		expect(eventCalls()).toHaveLength(0);
 	});
 
 	test("a missing data-opa-event value on the matched element is a no-op", async () => {
@@ -411,6 +445,7 @@ describe("data-opa-event declarative click tracking", () => {
 		const el = new FakeElement({ "data-opa-event": "" });
 		browser.click(el);
 		await flush();
-		expect(collectCalls()).toHaveLength(1);
+		expect(identifyCalls()).toHaveLength(1);
+		expect(eventCalls()).toHaveLength(0);
 	});
 });

@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
 	collectEndpoint,
 	createTransport,
+	eventEndpoint,
+	identifyEndpoint,
 	pageviewEndpoint,
 	sendPageview,
 } from "./transport";
-import type { PageviewPayload } from "./types";
+import type { EventPayload, IdentifyPayload, PageviewPayload } from "./types";
 
 const originals = {
 	document: globalThis.document,
@@ -54,8 +56,30 @@ describe("collectEndpoint", () => {
 	});
 });
 
+describe("identifyEndpoint", () => {
+	test("joins apiHost with /v1/track/identify and strips a trailing slash", () => {
+		expect(identifyEndpoint("https://api.opa.sh")).toBe(
+			"https://api.opa.sh/v1/track/identify",
+		);
+		expect(identifyEndpoint("https://api.opa.sh/")).toBe(
+			"https://api.opa.sh/v1/track/identify",
+		);
+	});
+});
+
+describe("eventEndpoint", () => {
+	test("joins apiHost with /v1/track/event and strips a trailing slash", () => {
+		expect(eventEndpoint("https://api.opa.sh")).toBe(
+			"https://api.opa.sh/v1/track/event",
+		);
+		expect(eventEndpoint("https://api.opa.sh/")).toBe(
+			"https://api.opa.sh/v1/track/event",
+		);
+	});
+});
+
 describe("createTransport", () => {
-	test("POSTs JSON to /v1/track/collect with the x-opa-site-key header", async () => {
+	test("POSTs identify JSON to /v1/track/identify with the x-opa-site-key header", async () => {
 		const calls: Array<{ url: string; init: RequestInit }> = [];
 		globalThis.fetch = mock(
 			async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -64,25 +88,46 @@ describe("createTransport", () => {
 			},
 		) as unknown as typeof fetch;
 		const transport = createTransport("https://api.opa.sh", SITE_KEY);
-		await transport.send({
+		const payload: IdentifyPayload = {
+			anonymousId: "vid_1",
 			clickId: "c1",
-			eventName: "Signup",
-			customerExternalId: "u1",
-		});
+			externalId: "u1",
+			traits: { plan: "pro" },
+		};
+		await transport.sendIdentify(payload);
 		expect(calls).toHaveLength(1);
-		expect(calls[0]?.url).toBe("https://api.opa.sh/v1/track/collect");
+		expect(calls[0]?.url).toBe("https://api.opa.sh/v1/track/identify");
 		expect(calls[0]?.init.method).toBe("POST");
 		expect(calls[0]?.init.headers).toEqual({
 			"content-type": "application/json",
 			"x-opa-site-key": SITE_KEY,
 		});
-		expect(calls[0]?.init.body).toBe(
-			JSON.stringify({
-				clickId: "c1",
-				eventName: "Signup",
-				customerExternalId: "u1",
-			}),
-		);
+		expect(calls[0]?.init.body).toBe(JSON.stringify(payload));
+	});
+
+	test("POSTs event JSON to /v1/track/event with optional clickId", async () => {
+		const calls: Array<{ url: string; init: RequestInit }> = [];
+		globalThis.fetch = mock(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				calls.push({ url: String(input), init: init ?? {} });
+				return new Response("{}", { status: 200 });
+			},
+		) as unknown as typeof fetch;
+		const transport = createTransport("https://api.opa.sh", SITE_KEY);
+		const payload: EventPayload = {
+			eventId: "evt_1",
+			anonymousId: "vid_1",
+			eventName: "Signup",
+			properties: { plan: "free" },
+		};
+		await transport.sendEvent(payload);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.url).toBe("https://api.opa.sh/v1/track/event");
+		expect(calls[0]?.init.headers).toEqual({
+			"content-type": "application/json",
+			"x-opa-site-key": SITE_KEY,
+		});
+		expect(calls[0]?.init.body).toBe(JSON.stringify(payload));
 	});
 
 	test("retries exactly once on a network error", async () => {
@@ -95,10 +140,12 @@ describe("createTransport", () => {
 			return new Response("{}", { status: 200 });
 		}) as unknown as typeof fetch;
 		const transport = createTransport("https://api.opa.sh", SITE_KEY);
-		await transport.send({
+		await transport.sendEvent({
+			eventId: "evt_1",
+			anonymousId: "vid_1",
 			clickId: "c1",
 			eventName: "Signup",
-			customerExternalId: "u1",
+			externalId: "u1",
 		});
 		expect(attempts).toBe(2);
 	});
@@ -141,10 +188,12 @@ describe("createTransport", () => {
 
 		const transport = createTransport("https://api.opa.sh", SITE_KEY);
 		transport.bindUnload();
-		void transport.send({
+		void transport.sendEvent({
+			eventId: "evt_1",
+			anonymousId: "vid_1",
 			clickId: "c1",
 			eventName: "Signup",
-			customerExternalId: "u1",
+			externalId: "u1",
 		});
 		await Promise.resolve();
 		(globalThis.document as { visibilityState: string }).visibilityState =
@@ -155,16 +204,18 @@ describe("createTransport", () => {
 		expect(beacons).toHaveLength(0);
 		expect(calls.length).toBeGreaterThanOrEqual(2);
 		const flush = calls[calls.length - 1];
-		expect(flush?.url).toBe("https://api.opa.sh/v1/track/collect");
+		expect(flush?.url).toBe("https://api.opa.sh/v1/track/event");
 		expect(flush?.init.keepalive).toBe(true);
 		expect(flush?.init.headers).toEqual({
 			"content-type": "application/json",
 			"x-opa-site-key": SITE_KEY,
 		});
 		expect(JSON.parse(String(flush?.init.body))).toEqual({
+			eventId: "evt_1",
+			anonymousId: "vid_1",
 			clickId: "c1",
 			eventName: "Signup",
-			customerExternalId: "u1",
+			externalId: "u1",
 		});
 	});
 
@@ -186,19 +237,23 @@ describe("createTransport", () => {
 			writable: true,
 		});
 		const transport = createTransport("https://api.opa.sh");
-		await transport.send({
+		await transport.sendEvent({
+			eventId: "evt_1",
+			anonymousId: "vid_1",
 			clickId: "c1",
 			eventName: "Signup",
-			customerExternalId: "u1",
+			externalId: "u1",
 		});
 		expect(beacons).toHaveLength(1);
-		expect(beacons[0]?.url).toBe("https://api.opa.sh/v1/track/collect");
+		expect(beacons[0]?.url).toBe("https://api.opa.sh/v1/track/event");
 		const data = beacons[0]?.data;
 		const text = data instanceof Blob ? await data.text() : String(data ?? "");
 		expect(JSON.parse(text)).toEqual({
+			eventId: "evt_1",
+			anonymousId: "vid_1",
 			clickId: "c1",
 			eventName: "Signup",
-			customerExternalId: "u1",
+			externalId: "u1",
 		});
 	});
 });

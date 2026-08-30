@@ -3,7 +3,9 @@
 export type {
 	AttributionModel,
 	ConsentMode,
+	EventPayload,
 	IdentifyInput,
+	IdentifyPayload,
 	PageviewOverrides,
 	PageviewPayload,
 	Tracker,
@@ -11,6 +13,7 @@ export type {
 	TrackerCookieConfig,
 	TrackProperties,
 } from "../index";
+export { createTracker } from "../index";
 export type {
 	OpaAnalyticsProps,
 	OpaClient,

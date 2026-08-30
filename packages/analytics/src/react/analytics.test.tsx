@@ -11,6 +11,8 @@ function fakeTracker(): Tracker {
 		getClickId: mock(() => null),
 		setConsent: mock(() => {}),
 		reset: mock(() => {}),
+		resetIdentity: mock(() => {}),
+		resetAttribution: mock(() => {}),
 		ready: mock(() => {}),
 		init: mock(() => {}),
 		pageview: mock(async () => {}),

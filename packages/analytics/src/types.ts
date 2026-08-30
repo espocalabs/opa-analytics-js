@@ -53,6 +53,25 @@ export type LeadPayload = {
 	metadata?: Record<string, unknown>;
 };
 
+export type IdentifyPayload = {
+	anonymousId: string;
+	externalId: string;
+	clickId?: string;
+	email?: string;
+	name?: string;
+	avatar?: string;
+	traits?: Record<string, unknown>;
+};
+
+export type EventPayload = {
+	eventId: string;
+	anonymousId: string;
+	eventName: string;
+	clickId?: string;
+	externalId?: string;
+	properties?: Record<string, unknown>;
+};
+
 /**
  * Client-collectable fields sent to `POST /v1/track/pageview`. The server
  * derives geo/user-agent/bot classification from the request itself — never
@@ -124,6 +143,8 @@ export type Tracker = {
 	getClickId: () => string | null;
 	setConsent: (granted: boolean) => void;
 	reset: () => void;
+	resetIdentity: (options?: { rotateAnonymous?: boolean }) => void;
+	resetAttribution: () => void;
 	ready: (cb: () => void) => void;
 	init: () => void;
 	/** Sends one pageview now. Autocapture calls this internally on initial

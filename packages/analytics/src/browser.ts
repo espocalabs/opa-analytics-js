@@ -24,6 +24,8 @@ export type OpaGlobal = {
 	getClickId: ReturnType<typeof createTracker>["getClickId"];
 	setConsent: ReturnType<typeof createTracker>["setConsent"];
 	reset: ReturnType<typeof createTracker>["reset"];
+	resetIdentity: ReturnType<typeof createTracker>["resetIdentity"];
+	resetAttribution: ReturnType<typeof createTracker>["resetAttribution"];
 	pageview: ReturnType<typeof createTracker>["pageview"];
 	getVisitorId: ReturnType<typeof createTracker>["getVisitorId"];
 	setProps: ReturnType<typeof createTracker>["setProps"];
@@ -311,6 +313,8 @@ export function bootstrap(): OpaGlobal | undefined {
 		getClickId: tracker.getClickId,
 		setConsent: tracker.setConsent,
 		reset: tracker.reset,
+		resetIdentity: tracker.resetIdentity,
+		resetAttribution: tracker.resetAttribution,
 		pageview: tracker.pageview,
 		getVisitorId: tracker.getVisitorId,
 		setProps: tracker.setProps,
