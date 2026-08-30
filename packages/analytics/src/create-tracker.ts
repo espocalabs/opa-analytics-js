@@ -368,6 +368,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 			memoryVisitorId = null;
 			memorySession = null;
 			lastFiredPath = null;
+			transport.clear();
 			eraseAnalyticsCookies();
 			optOutApplied = true;
 		}
@@ -867,6 +868,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 			currentExternalId = null;
 			memoryVisitorId = null;
 			memorySession = null;
+			transport.clear();
 			eraseAnalyticsCookies();
 		} catch {
 			// Never throw to the caller.
@@ -883,6 +885,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 			// Restore the static config/`data-props` defaults, not an empty bag —
 			// per-user context set via setProps() is what should go stale here.
 			defaultProps = { ...initialProps };
+			transport.clear();
 			eraseAnalyticsCookies();
 		} catch {
 			// Never throw to the caller.

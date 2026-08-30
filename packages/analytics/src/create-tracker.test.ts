@@ -797,6 +797,49 @@ describe("reset, ready, outbound, unload", () => {
 		});
 	});
 
+	test("opa_ignore clears in-flight unload flushes without cancelling the already-started send", async () => {
+		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
+		const calls: Array<{ url: string; init: RequestInit }> = [];
+		globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+			calls.push({ url: String(input), init: init ?? {} });
+			return new Promise<Response>(() => {
+				// Keep identify in-flight so pagehide would flush it if not cleared.
+			});
+		}) as unknown as typeof fetch;
+		const tracker = createTracker({ key: SITE_KEY });
+		void tracker.identify({ externalId: "cus_1" });
+		await Promise.resolve();
+		expect(calls).toHaveLength(1);
+
+		browser.storage.set("opa_ignore", "true");
+		expect(tracker.getClickId()).toBeNull();
+		browser.dispatchWindow("pagehide");
+
+		expect(calls).toHaveLength(1);
+		expect(browser.beaconCalls).toHaveLength(0);
+	});
+
+	test("setConsent(false) clears in-flight unload flushes without cancelling the already-started send", async () => {
+		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
+		const calls: Array<{ url: string; init: RequestInit }> = [];
+		globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+			calls.push({ url: String(input), init: init ?? {} });
+			return new Promise<Response>(() => {
+				// Keep event in-flight so pagehide would flush it if not cleared.
+			});
+		}) as unknown as typeof fetch;
+		const tracker = createTracker({ key: SITE_KEY });
+		void tracker.track("Signup", { source: "cta" });
+		await Promise.resolve();
+		expect(calls).toHaveLength(1);
+
+		tracker.setConsent(false);
+		browser.dispatchWindow("pagehide");
+
+		expect(calls).toHaveLength(1);
+		expect(browser.beaconCalls).toHaveLength(0);
+	});
+
 	test("uses fetch keepalive when the document is already hidden", async () => {
 		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
 		browser.visibilityState = "hidden";

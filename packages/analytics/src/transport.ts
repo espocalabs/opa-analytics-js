@@ -188,6 +188,7 @@ async function fetchWithRetry(
 export type Transport = {
 	sendIdentify: (payload: IdentifyPayload) => Promise<void>;
 	sendEvent: (payload: EventPayload) => Promise<void>;
+	clear: () => void;
 	bindUnload: () => void;
 };
 
@@ -218,6 +219,10 @@ export function createTransport(apiHost: string, key?: string): Transport {
 			}
 			sendBeacon(url, key ? bodyWithSiteKey(body, key) : body);
 		}
+	}
+
+	function clear(): void {
+		inFlight.clear();
 	}
 
 	function onHidden(): void {
@@ -288,5 +293,5 @@ export function createTransport(apiHost: string, key?: string): Transport {
 		}
 	}
 
-	return { sendIdentify, sendEvent, bindUnload };
+	return { sendIdentify, sendEvent, clear, bindUnload };
 }
