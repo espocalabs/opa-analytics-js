@@ -9,11 +9,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Anonymous-first identify and events.** `identify()` now sends
   `POST /v1/track/identify` with `anonymousId`, `externalId`, optional
-  profile fields, optional traits, and optional `clickId`; it no longer emits
-  a lead/conversion event. `track()` now sends `POST /v1/track/event` with a
-  fresh `eventId`, the stable browser `anonymousId`, optional properties,
-  optional `clickId`, and the most recent in-memory `externalId` when one was
-  identified on the same tracker instance.
+  `clickId`, and a shallow `traits` bag containing `email`/`name`/`avatar`
+  plus any extra caller traits; it no longer emits a lead/conversion event.
+  `track()` now sends `POST /v1/track/event` with a fresh `eventId`, the
+  stable browser `anonymousId`, optional properties, optional `clickId`, and
+  the most recent in-memory `externalId` when one was identified on the same
+  tracker instance.
+- `identifyEventName` is now a deprecated no-op. It remains in the type for
+  compile compatibility, but `identify()` no longer creates an event whose
+  name can be customized.
 - **Pre-identify event capture.** `track()` and declarative
   `data-opa-event` clicks no longer require a prior `identify()` or click
   attribution; anonymous events send as long as consent and opt-out gates allow
