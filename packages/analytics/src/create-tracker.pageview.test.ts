@@ -325,6 +325,22 @@ describe("initial pageview", () => {
 			console.warn = originalWarn;
 		}
 	});
+
+	test("setConsent(true) after denied initializes capture exactly once", async () => {
+		const tracker = createTracker({ key: SITE_KEY, consent: "denied" });
+		await flush();
+		expect(pageviewCalls()).toHaveLength(0);
+
+		tracker.setConsent(true);
+		await flush();
+		expect(pageviewCalls()).toHaveLength(1);
+		const first = pageviewCalls()[0]?.body as Record<string, unknown>;
+		expect(first.pathname).toBe("/landing");
+
+		tracker.setConsent(true);
+		await flush();
+		expect(pageviewCalls()).toHaveLength(1);
+	});
 });
 
 describe("SPA navigation autocapture", () => {

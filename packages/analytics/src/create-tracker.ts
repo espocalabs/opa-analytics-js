@@ -325,6 +325,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 	let currentExternalId: string | null = null;
 	let memoryVisitorId: string | null = null;
 	let memorySession: SessionState | null = null;
+	let optOutApplied = false;
 	let defaultProps: Record<string, unknown> = { ...initialProps };
 	let ready = false;
 	const readyQueue: Array<() => void> = [];
@@ -354,7 +355,23 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 	}
 
 	function captureBlocked(): boolean {
-		return !canPersist || isOptedOut();
+		if (!canPersist) {
+			return true;
+		}
+		if (!isOptedOut()) {
+			optOutApplied = false;
+			return false;
+		}
+		if (!optOutApplied) {
+			memoryClickId = null;
+			currentExternalId = null;
+			memoryVisitorId = null;
+			memorySession = null;
+			lastFiredPath = null;
+			eraseAnalyticsCookies();
+			optOutApplied = true;
+		}
+		return true;
 	}
 
 	function persist(value: string): void {
@@ -680,6 +697,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 					memoryVisitorId = null;
 					memorySession = null;
 					currentExternalId = null;
+					optOutApplied = isOptedOut();
 					markReady();
 					return;
 				}
@@ -762,7 +780,7 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 			}
 			const clickId = getClickId();
 			currentExternalId = input.externalId;
-			const { externalId, email, name, avatar, ...extra } = input;
+			const { externalId, ...extra } = input;
 			const traits = omitEmpty(extra);
 			const payload: IdentifyPayload = {
 				anonymousId,
@@ -770,15 +788,6 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 			};
 			if (clickId) {
 				payload.clickId = clickId;
-			}
-			if (email !== undefined) {
-				payload.email = email;
-			}
-			if (name !== undefined) {
-				payload.name = name;
-			}
-			if (avatar !== undefined) {
-				payload.avatar = avatar;
 			}
 			if (traits) {
 				payload.traits = traits;
@@ -829,9 +838,14 @@ export function createTracker(config: TrackerConfig = {}): Tracker {
 
 	function setConsent(granted: boolean): void {
 		try {
+			const wasBlocked = !canPersist;
 			canPersist = granted;
 			if (granted) {
 				if (isOptedOut()) {
+					return;
+				}
+				if (wasBlocked) {
+					init();
 					return;
 				}
 				if (memoryClickId) {

@@ -398,7 +398,7 @@ describe("consent mode", () => {
 		expect(browser.fetchCalls).toHaveLength(0);
 	});
 
-	test("setConsent(true) allows a fresh anonymous id but does not restore blocked attribution", () => {
+	test("setConsent(true) allows fresh capture from the current page", () => {
 		installBrowser({ href: "https://shop.example.com/?opa_id=pending" });
 		const tracker = createTracker({ consent: "denied" });
 		expect(tracker.getClickId()).toBeNull();
@@ -406,8 +406,8 @@ describe("consent mode", () => {
 		const visitorId = tracker.getVisitorId();
 		expect(visitorId).toBeTruthy();
 		expect(cookieValue("opa_vid")).toBe(visitorId);
-		expect(tracker.getClickId()).toBeNull();
-		expect(cookieValue("opa_id")).toBeNull();
+		expect(tracker.getClickId()).toBe("pending");
+		expect(cookieValue("opa_id")).toBe("pending");
 	});
 
 	test("setConsent(false) erases analytics cookies and blocks manual calls/getters", async () => {
@@ -457,6 +457,26 @@ describe("opa_ignore opt-out", () => {
 		expect(cookieValue("opa_vid")).toBeNull();
 		expect(cookieValue("opa_sid")).toBeNull();
 	});
+
+	test("clears existing analytics state when opa_ignore is enabled after init", async () => {
+		installBrowser({ href: "https://shop.example.com/?opa_id=click_abc" });
+		const tracker = createTracker({ key: SITE_KEY });
+		const anonymousId = tracker.getVisitorId();
+		expect(anonymousId).toBeTruthy();
+		expect(tracker.getClickId()).toBe("click_abc");
+		expect(cookieValue("opa_id")).toBe("click_abc");
+		expect(cookieValue("opa_vid")).toBe(anonymousId);
+
+		browser.storage.set("opa_ignore", "true");
+		await tracker.track("Signup");
+
+		expect(browser.fetchCalls).toHaveLength(0);
+		expect(tracker.getClickId()).toBeNull();
+		expect(tracker.getVisitorId()).toBeNull();
+		expect(cookieValue("opa_id")).toBeNull();
+		expect(cookieValue("opa_vid")).toBeNull();
+		expect(cookieValue("opa_sid")).toBeNull();
+	});
 });
 
 describe("identify and track", () => {
@@ -483,10 +503,12 @@ describe("identify and track", () => {
 			anonymousId,
 			externalId: "cus_1",
 			clickId: "click_abc",
-			email: "ada@example.com",
-			name: "Ada",
-			avatar: "https://cdn.example.com/ada.png",
-			traits: { plan: "pro" },
+			traits: {
+				email: "ada@example.com",
+				name: "Ada",
+				avatar: "https://cdn.example.com/ada.png",
+				plan: "pro",
+			},
 		});
 	});
 

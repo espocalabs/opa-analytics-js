@@ -17,6 +17,7 @@ export type TrackerConfig = {
 	outboundDomains?: string[];
 	consent?: ConsentMode;
 	queryParam?: string;
+	/** @deprecated `identify()` no longer emits an event; this option is a no-op. */
 	identifyEventName?: string;
 	/** Automatic pageview capture (initial load + SPA navigation). Default `true`. */
 	trackPageviews?: boolean;
@@ -57,9 +58,6 @@ export type IdentifyPayload = {
 	anonymousId: string;
 	externalId: string;
 	clickId?: string;
-	email?: string;
-	name?: string;
-	avatar?: string;
 	traits?: Record<string, unknown>;
 };
 

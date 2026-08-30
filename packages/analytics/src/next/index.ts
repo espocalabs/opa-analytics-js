@@ -13,7 +13,6 @@ export type {
 	TrackerCookieConfig,
 	TrackProperties,
 } from "../index";
-export { createTracker } from "../index";
 export type {
 	OpaAnalyticsProps,
 	OpaClient,
